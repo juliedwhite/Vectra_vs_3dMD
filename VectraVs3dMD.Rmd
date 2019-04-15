@@ -1,12 +1,12 @@
 ---
-title: "CameraValidation"
+title: "VectraVs3dMD"
 author: "Ciara Virgo & Julie White"
 date: "December 5, 2018"
 output: html_document
 ---
 
 ```{r}
-setwd("C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3DMD/Analysis")
+setwd("C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD")
 ```
 
 # Packages and Functions
@@ -25,7 +25,8 @@ library(ggpubr)
 library(ggthemr)
 ```
 
-Tom's Plot1Face script
+Plot1Face script
+This script was written by Tomas Gonzalez-Zarzar and can be found at https://github.com/Arslan-Zaidi/Facial_masculinity_MHC/tree/master/Tutorial_visualizing_facial_heatmaps
 ```{r}
 source('Plot1Face.R')
 RefScan <- read.table("FacialTemplate_20171201.obj", sep = "\t", header = F, colClasses = c("character", rep("numeric", 3)))
@@ -33,12 +34,10 @@ RefScan_Facets <- as.matrix(RefScan[which(RefScan$V1 == "f"), 2:4])
 RefScan_Vertices <- as.matrix(RefScan[which(RefScan$V1 == "v"), 2:4])
 ```
 
-Example of plotting a couple of faces in greyscale.
-```{r}
-Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = NULL, title = "RefScan")
-```
-
 # Data
+The data are structured as follows: 
+315 rows = 35 people * 3 replicate images * 3 registrations. Rows 1-105 is 1st registration; 106-210 is 2nd registration; 211-315 is 3rd registration. Within registration, P1_Rep1, P1_Rep2, P1_Rep3
+21480 variables = x, y, and z of the 7160 coordinates of the mask
 ```{r}
 #Read the 3DMD data 
 md.35ind <- read_csv("XYZ_35ind_3DMD_7160LM.txt", col_names = F)
@@ -47,10 +46,6 @@ md.mqn <- read_csv("XYZ_Mqn_3DMD_7160LM.txt", col_names = F)
 #Read in the Vectra data
 v.35ind <- read_csv("XYZ_35ind_Vectra_7160LM.txt", col_names = F)
 v.mqn <- read_csv("XYZ_Mqn_Vectra_7160LM.txt", col_names = F)
-
-#The data is structured as follows: 
-#315 rows = 35 people * 3 replicate images * 3 registrations. Rows 1-105 is 1st registration; 106-210 is 2nd registration; 211-315 is 3rd registration. Within registration, P1_Rep1, P1_Rep2, P1_Rep3
-#21480 variables = x, y, and z of the 7160 coordinates of the mask
 ```
 
 Row and column names
