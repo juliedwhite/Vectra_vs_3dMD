@@ -32,6 +32,9 @@ source('Plot1Face.R')
 RefScan <- read.table("FacialTemplate_20171201.obj", sep = "\t", header = F, colClasses = c("character", rep("numeric", 3)))
 RefScan_Facets <- as.matrix(RefScan[which(RefScan$V1 == "f"), 2:4])
 RefScan_Vertices <- as.matrix(RefScan[which(RefScan$V1 == "v"), 2:4])
+
+#Remove RefScan since we don't need it anymore
+rm(RefScan)
 ```
 
 # Data
@@ -48,48 +51,44 @@ v.35ind <- read_csv("XYZ_35ind_Vectra_7160LM.txt", col_names = F)
 v.mqn <- read_csv("XYZ_Mqn_Vectra_7160LM.txt", col_names = F)
 ```
 
-Row and column names
+Column names
 ```{r}
 #3dmd 
 #35 ind
 colnames(md.35ind) <- paste0(c("x", "y", "z"), rep(1:7160, each=3))
-rownames(md.35ind) <- c(paste0("P", rep(1:35, each=3), c(".R1.M1", ".R2.M1", ".R3.M1")), paste0("P", rep(1:35, each=3), c(".R1.M2", ".R2.M2", ".R3.M2")), paste0("P", rep(1:35, each=3), c(".R1.M3", ".R2.M3", ".R3.M3")))
 
 #Mannequin
 colnames(md.mqn) <- paste0(c("x", "y", "z"), rep(1:7160, each=3))
-rownames(md.mqn) <- c(paste0("Mqn", c(".R1.M1", ".R2.M1", ".R3.M1")), paste0("Mqn", c(".R1.M2", ".R2.M2", ".R3.M2")), paste0("Mqn", c(".R1.M3", ".R2.M3", ".R3.M3")))
 
 #Vectra
 #35 ind
 colnames(v.35ind) <- paste0(c("x", "y", "z"), rep(1:7160, each=3))
-rownames(v.35ind) <- c(paste0("P", rep(1:35, each=3), c(".R1.M1", ".R2.M1", ".R3.M1")), paste0("P", rep(1:35, each=3), c(".R1.M2", ".R2.M2", ".R3.M2")), paste0("P", rep(1:35, each=3), c(".R1.M3", ".R2.M3", ".R3.M3")))
 
 #Mannequin
 colnames(v.mqn) <- paste0(c("x", "y", "z"), rep(1:7160, each=3))
-rownames(v.mqn) <- c(paste0("Mqn", c(".R1.M1", ".R2.M1", ".R3.M1")), paste0("Mqn", c(".R1.M2", ".R2.M2", ".R3.M2")), paste0("Mqn", c(".R1.M3", ".R2.M3", ".R3.M3")))
 ```
 
 Add columns to the dataframe as grouping variables
 ```{r}
 #3dmd
 #35 ind
-md.35ind$Individual <- factor(c(unlist(strsplit(rownames(md.35ind), split = "\\."))[seq(1,945,3)]), levels = c(paste0("P", 1:35)))
-md.35ind$Replicate <- factor(c(unlist(strsplit(rownames(md.35ind), split = "\\."))[seq(2,945,3)]))
-md.35ind$Mapping <- factor(c(unlist(strsplit(rownames(md.35ind), split = "\\."))[seq(3,945,3)]))
+md.35ind$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
+md.35ind$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
+md.35ind$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
 
 #Mannequin
-md.mqn$Replicate <- factor(c(unlist(strsplit(rownames(md.mqn), split = "\\."))[seq(2,27,3)]))
-md.mqn$Mapping <- factor(c(unlist(strsplit(rownames(md.mqn), split = "\\."))[seq(3,27,3)]))
+md.mqn$Replicate <- factor(c(rep(c("R1", "R2", "R3"), times = 3)))
+md.mqn$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 3)))
 
 #Vectra
 #35 ind
-v.35ind$Individual <- factor(c(unlist(strsplit(rownames(v.35ind), split = "\\."))[seq(1,945,3)]), levels = c(paste0("P", 1:35)))
-v.35ind$Replicate <- factor(c(unlist(strsplit(rownames(v.35ind), split = "\\."))[seq(2,945,3)]))
-v.35ind$Mapping <- factor(c(unlist(strsplit(rownames(v.35ind), split = "\\."))[seq(3,945,3)]))
+v.35ind$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
+v.35ind$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
+v.35ind$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
 
 #Mannequin
-v.mqn$Replicate <- factor(c(unlist(strsplit(rownames(v.mqn), split = "\\."))[seq(2,27,3)]))
-v.mqn$Mapping <- factor(c(unlist(strsplit(rownames(v.mqn), split = "\\."))[seq(3,27,3)]))
+v.mqn$Replicate <- factor(c(rep(c("R1", "R2", "R3"), times = 3)))
+v.mqn$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 3)))
 ```
 
 # Within-camera registration error
@@ -104,9 +103,8 @@ md.35ind.mapping.sd <- md.35ind %>%
   summarise_all(.funs = sd)
 
 #Plot
-ggthemr(palette = 'dust')
-ggplot(melt(md.35ind.mapping.sd, id.vars = c("Individual", "Replicate")), aes(x = Individual, y = value))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")+labs(y = "Euclidean distance (mm)")
-ggthemr_reset()
+ggthemr(palette = 'fresh')
+ggplot(melt(md.35ind.mapping.sd, id.vars = c("Individual", "Replicate")), aes(x = Individual, y = value))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")+labs(y = "Standard deviation (mm)")
 ```
 
 #### Mannequin
@@ -121,7 +119,7 @@ md.mqn.mapping.sd <- md.mqn %>%
 rowMeans(md.mqn.mapping.sd[-1])
 
 #Plot
-ggplot(melt(md.mqn.mapping.sd, id.vars = c("Replicate")), aes(x = Replicate, y = value, color = Replicate))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")
+ggplot(melt(md.mqn.mapping.sd, id.vars = c("Replicate")), aes(x = Replicate, y = value, fill = Replicate))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")
 ```
 
 ### Vectra
@@ -134,7 +132,7 @@ v.35ind.mapping.sd <- v.35ind %>%
   summarise_all(.funs = sd)
 
 #Plot
-ggplot(melt(v.35ind.mapping.sd, id.vars = c("Individual", "Replicate")), aes(x = Individual, y = value, color = Individual))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")
+ggplot(melt(v.35ind.mapping.sd, id.vars = c("Individual", "Replicate")), aes(x = Individual, y = value))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")+labs(y="Standard deviation (mm)")
 ```
 
 #### Mannequin
@@ -149,7 +147,7 @@ v.mqn.mapping.sd <- v.mqn %>%
 rowMeans(v.mqn.mapping.sd[-1])
 
 #Plot
-ggplot(melt(v.mqn.mapping.sd, id.vars = c("Replicate")), aes(x = Replicate, y = value, color = Replicate))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")
+ggplot(melt(v.mqn.mapping.sd, id.vars = c("Replicate")), aes(x = Replicate, y = value, fill = Replicate))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")
 ```
 
 ## Euclidean distance between mapping replicate centriod and each mapping iteration
@@ -161,8 +159,6 @@ md.35ind.mapping.centroid <- md.35ind %>%
   group_by(Individual, Replicate) %>%
   dplyr::select(-c(Mapping)) %>%
   summarise_all(.funs = mean)
-
-#rownames(md.35ind.mapping.centroid) <- c(paste0("P", rep(1:35, each=3), c(".R1", ".R2", ".R3")))
 ```
 
 ```{r}
@@ -198,9 +194,7 @@ md.35ind.mapping.euclid.mean <- as.data.frame(t(md.35ind.mapping.euclid.mean))
 colnames(md.35ind.mapping.euclid.mean) <- c(paste0("P", rep(1:35, each=3)))
 
 #Plot
-ggthemr(palette = 'dust')
-ggplot(melt(md.35ind.mapping.euclid.mean), aes(x = variable, y = value))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none", plot.background = element_rect(fill = '#FAF7F2'))+labs(x = "Individual", y = "Eucidean distance (mm)", title = "Average registration error for 3dMD images")
-ggthemr_reset()
+ggplot(melt(md.35ind.mapping.euclid.mean), aes(x = variable, y = value))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")+labs(x = "Individual", y = "Eucidean distance (mm)", title = "Average registration error for 3dMD images")
 ```
 
 Plot on face
@@ -215,8 +209,6 @@ md.mqn.mapping.centroid <- md.mqn %>%
   group_by(Replicate) %>%
   dplyr::select(-c(Mapping)) %>%
   summarise_all(.funs = mean)
-
-#rownames(md.mqn.mapping.centroid) <- c("Mqn.R1", "Mqn.R2", "Mqn.R3")
 ```
 
 Calculate the euclidean distance between each mapping and the centroid of the mappings
@@ -250,10 +242,10 @@ for (i in seq(1:3)){
 md.mqn.mapping.euclid.mean <- as.data.frame(t(md.mqn.mapping.euclid.mean))
 colnames(md.mqn.mapping.euclid.mean) <- c("Mqn1", "Mqn2", "Mqn3")
 
+my_comparisons <- list(c("Mqn1", "Mqn2"), c("Mqn1", "Mqn3"), c("Mqn2", "Mqn3"))
+
 #Plot
-ggthemr('dust')
-ggplot(melt(md.mqn.mapping.euclid.mean), aes(x = variable, y = value, fill = variable))+geom_boxplot()+stat_compare_means(comparisons = my_comparisons, paired = TRUE)+labs(title = "Average registration error for 3dMD mannequin images", subtitle = "Wilcoxon comparison of means", x = "Image", y = "Euclidean distance (mm)")+theme(legend.position = "none", plot.background = element_rect(fill = '#FAF7F2'))
-ggthemr_reset()
+ggplot(melt(md.mqn.mapping.euclid.mean), aes(x = variable, y = value, fill = variable))+geom_boxplot()+stat_compare_means(comparisons = my_comparisons, paired = TRUE)+labs(title = "Average registration error for 3dMD mannequin images", subtitle = "Wilcoxon comparison of means", x = "Image", y = "Euclidean distance (mm)")+theme(legend.position = "none")
 ```
 
 Plot on face
@@ -270,8 +262,6 @@ v.35ind.mapping.centroid <- v.35ind %>%
   group_by(Individual, Replicate) %>%
   dplyr::select(-c(Mapping)) %>%
   summarise_all(.funs = mean)
-
-#rownames(v.35ind.mapping.centroid) <- c(paste0("P", rep(1:35, each=3), c(".R1", ".R2", ".R3")))
 ```
 
 Calculate the euclidean distance between each mapping and the centroid of the mappings
@@ -308,9 +298,7 @@ v.35ind.mapping.euclid.mean <- as.data.frame(t(v.35ind.mapping.euclid.mean))
 colnames(v.35ind.mapping.euclid.mean) <- c(paste0("P", rep(1:35, each=3)))
 
 #Plot
-ggthemr('dust')
-ggplot(melt(v.35ind.mapping.euclid.mean), aes(x = variable, y = value))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none", plot.background = element_rect(fill = '#FAF7F2'))+labs(x = "Individual", y = "Eucidean distance (mm)", title = "Average registration error for Vectra images")
-ggthemr_reset()
+ggplot(melt(v.35ind.mapping.euclid.mean), aes(x = variable, y = value))+geom_boxplot()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")+labs(x = "Individual", y = "Eucidean distance (mm)", title = "Average registration error for Vectra images")
 ```
 
 Plot on face
@@ -326,8 +314,6 @@ v.mqn.mapping.centroid <- v.mqn %>%
   group_by(Replicate) %>%
   dplyr::select(-c(Mapping)) %>%
   summarise_all(.funs = mean)
-
-#rownames(v.mqn.mapping.centroid) <- c("Mqn.R1", "Mqn.R2", "Mqn.R3")
 ```
 
 Calculate the euclidean distance between each mapping and the centroid of the mappings
@@ -362,9 +348,7 @@ v.mqn.mapping.euclid.mean <- as.data.frame(t(v.mqn.mapping.euclid.mean))
 colnames(v.mqn.mapping.euclid.mean) <- c("Mqn1", "Mqn2", "Mqn3")
 
 #Plot
-ggthemr('dust')
-ggplot(melt(v.mqn.mapping.euclid.mean), aes(x = variable, y = value, fill = variable))+geom_boxplot()+stat_compare_means(comparisons = my_comparisons, paired = TRUE)+labs(title = "Average registration error for Vectra mannequin images", subtitle = "Wilcoxon comparison of means", x = "Image", y = "Euclidean distance (mm)")+theme(legend.position = "none", plot.background = element_rect(fill = '#FAF7F2'))
-ggthemr_reset()
+ggplot(melt(v.mqn.mapping.euclid.mean), aes(x = variable, y = value, fill = variable))+geom_boxplot()+stat_compare_means(comparisons = my_comparisons, paired = TRUE)+labs(title = "Average registration error for Vectra mannequin images", subtitle = "Wilcoxon comparison of means", x = "Image", y = "Euclidean distance (mm)")+theme(legend.position = "none")
 ```
 
 Plot on Face
@@ -417,11 +401,9 @@ bothcam.35ind.mapping.euclid.pmean <- cbind(md.35ind.mapping.euclid.pmean, v.35i
 colnames(bothcam.35ind.mapping.euclid.pmean) <- c("3dMD", "Vectra")
 
 #Plot and add p-value of Wilcoxon comparison of means 
-ggthemr('dust')
-p <- ggplot(melt(bothcam.35ind.mapping.euclid.pmean), aes(x = Var2, y=value, fill = Var2))+geom_boxplot()+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Var1), colour = "black", alpha = 0.5)+stat_compare_means(paired = TRUE, label.x = 2)+ylab("Euclidean distance (mm)")+xlab("Camera")+ggtitle("Average registration error")+theme(legend.position = "none", axis.title = element_text(), plot.background = element_rect(fill = '#FAF7F2'))
-ggsave(plot =  p, filename =  "AvgRegistrationErrorPerCamera.pdf", device = "pdf", width = 6, height = 4, units = "in")
+p <- ggplot(melt(bothcam.35ind.mapping.euclid.pmean), aes(x = Var2, y=value, fill = Var2))+geom_boxplot()+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Var1), colour = "black", alpha = 0.5)+stat_compare_means(paired = TRUE, label.x = 2)+ylab("Euclidean distance (mm)")+xlab("Camera")+ggtitle("Average registration error")+theme(legend.position = "none", axis.title = element_text())
+ggsave(plot =  p, filename =  "Figures/AvgRegistrationErrorPerCamera.pdf", device = "pdf", width = 6, height = 4, units = "in")
 p
-ggthemr_reset()
 ```
 
 Graphing per person instead of overall camera
@@ -429,14 +411,12 @@ Graphing per person instead of overall camera
 bothcam.35ind.mapping.euclid.regmean <- as.data.frame(rbind(md.35ind.mapping.euclid.regmean, v.35ind.mapping.euclid.regmean))
 bothcam.35ind.mapping.euclid.regmean$Camera <- c(rep("3dMD", times = 35), rep("Vectra", times = 35))
 
-ggthemr('dust')
-p <- ggplot(melt(bothcam.35ind.mapping.euclid.regmean, id.vars = c("Individual", "Camera")), aes(x = Individual, y = value, fill = Camera))+geom_boxplot(outlier.size = 0.5)+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), axis.title = element_text(), legend.position = "bottom", plot.background = element_rect(fill = '#FAF7F2'), legend.background = element_rect(fill = '#FAF7F2'))+labs(title = "Average registration error", y = "Euclidean distance (mm)")
-ggsave(plot =  p, filename =  "AvgRegistrationErrorPerParticipant.pdf", device = "pdf", width = 6, height = 4, units = "in")
+p <- ggplot(melt(bothcam.35ind.mapping.euclid.regmean, id.vars = c("Individual", "Camera")), aes(x = Individual, y = value, fill = Camera))+geom_boxplot(outlier.size = 0.5)+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), axis.title = element_text(), legend.position = "bottom")+labs(title = "Average registration error", y = "Euclidean distance (mm)")
+ggsave(plot =  p, filename =  "Figures/AvgRegistrationErrorPerParticipant.pdf", device = "pdf", width = 6, height = 4, units = "in")
 p
-ggthemr_reset()
 ```
 
-Doing the Wilcoxon text for differences in camera per person. Maybe should put in poster as table.
+Wilcoxon text for differences in camera per person.
 ```{r}
 compare_means(data = melt(bothcam.35ind.mapping.euclid.regmean, id.vars = c("Individual", "Camera")), formula = value ~ Camera, group.by = "Individual", paired = TRUE)
 ```
@@ -447,11 +427,9 @@ bothcam.mqn.mapping.euclid.mean <- as.data.frame(t(cbind(md.mqn.mapping.euclid.m
 bothcam.mqn.mapping.euclid.mean$Camera <- c(rep("3dMD", times = 3), rep("Vectra", times = 3))
 bothcam.mqn.mapping.euclid.mean$Replicate <- c(paste0("R", rep(1:3, times = 2)))
 
-ggthemr('dust')
-p<-ggplot(melt(bothcam.mqn.mapping.euclid.mean, id.vars = c("Camera", "Replicate")), aes(x = Replicate, y = value, fill = Camera))+geom_boxplot()+stat_compare_means(paired = TRUE, label = "p.format", label.y = 1)+labs(title = "Average registration error for mannequin images", subtitle = "Kruskal-Wallis paired test", y = "Euclidean distance (mm)")+theme(axis.title = element_text(), plot.background = element_rect(fill = '#FAF7F2'), legend.background = element_rect(fill = "#FAF7F2", color = "#FAF7F2"))
-ggsave(plot =  p, filename =  "AvgRegistrationErrorMannequin.pdf", device = "pdf", width = 6, height = 4, units = "in")
+p<-ggplot(melt(bothcam.mqn.mapping.euclid.mean, id.vars = c("Camera", "Replicate")), aes(x = Replicate, y = value, fill = Camera))+geom_boxplot()+stat_compare_means(paired = TRUE, label = "p.format", label.y = 1)+labs(title = "Average registration error for mannequin images", subtitle = "Kruskal-Wallis paired test", y = "Euclidean distance (mm)")+theme(axis.title = element_text())
+ggsave(plot =  p, filename =  "Figures/AvgRegistrationErrorMannequin.pdf", device = "pdf", width = 6, height = 4, units = "in")
 p
-ggthemr_reset()
 ```
 
 # Intra-camera error 
@@ -741,11 +719,7 @@ Boxplot of average Euclidean distance between person's centroid and replicates
 ```{r}
 rownames(md.35ind.intra.tocent.euclid.mean) <- paste0("P", 1:35)
 
-
-
-ggthemr('dust')
-ggplot(melt(t(md.35ind.intra.tocent.euclid.mean)), aes(x=factor(Var2),y=value))+geom_boxplot()+ggtitle("Average biological error for 3dMD images") + theme(legend.position = "none", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust =1), plot.background = element_rect(fill = "#FAF7F2")) + ylab("Euclidean distance (mm)")+xlab("Individual")
-ggthemr_reset()
+ggplot(melt(t(md.35ind.intra.tocent.euclid.mean)), aes(x=factor(Var2),y=value))+geom_boxplot()+ggtitle("Average biological error for 3dMD images") + theme(legend.position = "none", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust =1)) + ylab("Euclidean distance (mm)")+xlab("Individual")
 ```
 
 #### Mannequin
@@ -853,7 +827,7 @@ Boxplot of average Euclidean distance between person's centroid and replicates
 ```{r}
 rownames(v.35ind.intra.tocent.euclid.mean) <- paste0("P", 1:35)
 
-ggplot(melt(t(v.35ind.intra.tocent.euclid.mean)), aes(x=Var2,y=value,color=Var2))+geom_boxplot()+ggtitle("Average Euclidean Distance between replicate centroid and replicates") + theme(legend.position = "none", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust =1)) + ylab("Euclidean distance")+xlab("Individual")
+ggplot(melt(t(v.35ind.intra.tocent.euclid.mean)), aes(x=Var2,y=value))+geom_boxplot()+ggtitle("Average Euclidean Distance between replicate centroid and replicates") + theme(legend.position = "none", axis.text.x = element_text(angle = 90, vjust = 0.5, hjust =1)) + ylab("Euclidean distance")+xlab("Individual")
 ```
 
 #### Mannequin
@@ -887,7 +861,6 @@ for (j in 1:length(coord.cols)){
   #Calculate the average of the euclidean distances and assign it
   v.mqn.intra.tocent.euclid.mean[1,j] <- mean(c(v.mqn.intra.tocent.euclid[1,j], v.mqn.intra.tocent.euclid[2,j], v.mqn.intra.tocent.euclid[3,j]))
 }
-
 ```
 
 Plot on a face 
@@ -907,12 +880,9 @@ ggplot(as.data.frame(t(v.mqn.intra.tocent.euclid.mean)), aes(x=V1))+geom_histogr
 bothcam.35ind.intra.tocent.euclid.pmean <- cbind(rowMeans(md.35ind.intra.tocent.euclid.mean), rowMeans(v.35ind.intra.tocent.euclid.mean))
 colnames(bothcam.35ind.intra.tocent.euclid.pmean) <- c("3dMD", "Vectra")
 
-ggthemr('dust')
-p <- ggplot(melt(bothcam.35ind.intra.tocent.euclid.pmean), aes(x = Var2, y=value, fill = Var2))+geom_boxplot()+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Var1), colour = "black", alpha = 0.5)+stat_compare_means(paired = TRUE, label.x = 0.55)+ylab("Euclidean distance (mm)")+xlab("Camera")+ggtitle("Average biological error")+theme(legend.position = "none", axis.title = element_text(), plot.background = element_rect(fill = '#FAF7F2'))
-ggsave(plot =  p, filename =  "AvgBiologicalErrorPerCamera.pdf", device = "pdf", width = 6, height = 4, units = "in")
+p <- ggplot(melt(bothcam.35ind.intra.tocent.euclid.pmean), aes(x = Var2, y=value, fill = Var2))+geom_boxplot()+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Var1), colour = "black", alpha = 0.5)+stat_compare_means(paired = TRUE, label.x = 0.55)+ylab("Euclidean distance (mm)")+xlab("Camera")+ggtitle("Average biological error")+theme(legend.position = "none", axis.title = element_text())
+ggsave(plot =  p, filename =  "Figures/AvgBiologicalErrorPerCamera.pdf", device = "pdf", width = 6, height = 4, units = "in")
 p
-ggthemr_reset()
-
 ```
 
 Graphing per person instead of overall camera
@@ -924,15 +894,12 @@ bothcam.35ind.intra.tocent.euclid.mean$Camera <- c(rep("3dMD", times = 35), rep(
 #Reorder the rows by number
 bothcam.35ind.intra.tocent.euclid.mean$Individual <- factor(bothcam.35ind.intra.tocent.euclid.mean$Individual, levels = c(paste0("P", 1:35)))
 
-ggthemr('dust')
-p <- ggplot(melt(bothcam.35ind.intra.tocent.euclid.mean, id.vars = c("Individual", "Camera")), aes(x = Individual, y = value, fill = Camera))+geom_boxplot(outlier.size = 0.5)+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), axis.title = element_text(), legend.position = "bottom", plot.background = element_rect(fill = '#FAF7F2'), legend.background = element_rect(fill = '#FAF7F2'))+labs(title = "Average biological error", y = "Euclidean distance (mm)")
-ggsave(plot =  p, filename =  "AvgBiologicalErrorPerParticipant.pdf", device = "pdf", width = 6, height = 4, units = "in")
+p <- ggplot(melt(bothcam.35ind.intra.tocent.euclid.mean, id.vars = c("Individual", "Camera")), aes(x = Individual, y = value, fill = Camera))+geom_boxplot(outlier.size = 0.5)+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), axis.title = element_text(), legend.position = "bottom")+labs(title = "Average biological error", y = "Euclidean distance (mm)")
+ggsave(plot =  p, filename =  "Figures/AvgBiologicalErrorPerParticipant.pdf", device = "pdf", width = 6, height = 4, units = "in")
 p
-ggthemr_reset()
-
 ```
 
-Doing the Wilcoxon text for differences in camera per person. Maybe should put in poster as table.
+Wilcoxon text for differences in camera per person
 ```{r}
 compare_means(data = melt(bothcam.35ind.intra.tocent.euclid.mean, id.vars = c("Individual", "Camera")), formula = value ~ Camera, group.by = "Individual", paired = TRUE)
 ```
@@ -943,12 +910,9 @@ compare_means(data = melt(bothcam.35ind.intra.tocent.euclid.mean, id.vars = c("I
 bothcam.mqn.intra.tocent.euclid.mean <- t(rbind(md.mqn.intra.tocent.euclid.mean, v.mqn.intra.tocent.euclid.mean))
 colnames(bothcam.mqn.intra.tocent.euclid.mean) <- c("3dMD", "Vectra")
 
-
-ggthemr('dust')
-p <- ggplot(melt(bothcam.mqn.intra.tocent.euclid.mean), aes(x = Var2, y = value, fill = Var2))+geom_boxplot()+stat_compare_means(paired = TRUE, label.x = 0.55)+labs(title = "Average 'biological' error for mannequin images", y = "Euclidean distance (mm)", x = "Camera")+theme(axis.title = element_text(), plot.background = element_rect(fill = "#FAF7F2"), legend.position = "none")
-ggsave(plot =  p, filename =  "AvgBiologicalErrorMannequin.pdf", device = "pdf", width = 6, height = 4, units = "in")
+p <- ggplot(melt(bothcam.mqn.intra.tocent.euclid.mean), aes(x = Var2, y = value, fill = Var2))+geom_boxplot()+stat_compare_means(paired = TRUE, label.x = 0.55)+labs(title = "Average 'biological' error for mannequin images", y = "Euclidean distance (mm)", x = "Camera")+theme(axis.title = element_text(), legend.position = "none")
+ggsave(plot =  p, filename =  "Figures/AvgBiologicalErrorMannequin.pdf", device = "pdf", width = 6, height = 4, units = "in")
 p
-ggthemr_reset()
 ```
 
 # Inter-camera error
@@ -1005,7 +969,7 @@ Plot standard deviation per person
 ```{r}
 rownames(bothcam.35ind.inter.sd) <- paste0("P", 1:35)
 
-ggplot(melt(t(bothcam.35ind.inter.sd)), aes(x=Var2,y=value,color=Var2))+geom_boxplot()+ggtitle("Standard deviation between MD and Vectra") + theme(legend.position = "none")+xlab("Individual")+ylab("Standard Deviation")
+ggplot(melt(t(bothcam.35ind.inter.sd)), aes(x=Var2,y=value))+geom_boxplot()+ggtitle("Standard deviation between MD and Vectra") + theme(legend.position = "none")+xlab("Individual")+ylab("Standard Deviation")
 ```
 
 Calculate average per axis
@@ -1060,7 +1024,7 @@ colnames(bothcam.mqn.inter.sd.axis) <- c("X","Y","Z")
 #Remove old files
 rm(bothcam.mqn.inter.sd.x, bothcam.mqn.inter.sd.y, bothcam.mqn.inter.sd.z)
 
-ggplot(melt(bothcam.mqn.inter.sd.axis), aes(x=variable, y = value, color = variable))+geom_boxplot()+ggtitle("Average euclidean distance between replicates") + theme(legend.position = "none")+xlab("Replicate comparison")+ylab("Euclidean Distance")
+ggplot(melt(bothcam.mqn.inter.sd.axis), aes(x=variable, y = value, fill = variable))+geom_boxplot()+ggtitle("Average euclidean distance between replicates") + theme(legend.position = "none")+xlab("Replicate comparison")+ylab("Euclidean Distance")
 ```
 
 ## Euclidean distance between 3dMD and Vectra
@@ -1082,12 +1046,9 @@ Plot euclidean distance per person
 ```{r}
 rownames(bothcam.35ind.inter.euclid) <- paste0("P", 1:35)
 
-ggthemr('dust')
-p <- ggplot(melt(t(bothcam.35ind.inter.euclid)), aes(x=Var2,y=value))+geom_boxplot()+ggtitle("Camera error") + theme(legend.position = "none")+xlab("Individual")+ylab("Euclidean distance (mm)")+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none", plot.background = element_rect(fill = "#FAF7F2"))
-ggsave(plot =  p, filename =  "CameraErrorPerParticipant.pdf", device = "pdf", width = 6, height = 4, units = "in")
+p <- ggplot(melt(t(bothcam.35ind.inter.euclid)), aes(x=Var2,y=value))+geom_boxplot()+ggtitle("Camera error") + theme(legend.position = "none")+xlab("Individual")+ylab("Euclidean distance (mm)")+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")
+ggsave(plot =  p, filename =  "Figures/CameraErrorPerParticipant.pdf", device = "pdf", width = 6, height = 4, units = "in")
 p
-ggthemr_reset()
-
 ```
 
 Euclidean distance on face plot
@@ -1112,9 +1073,7 @@ Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = bothc
 
 Plot
 ```{r}
-ggthemr('dust')
-ggplot(as.data.frame(t(bothcam.mqn.inter.euclid)), aes(x=V1))+geom_histogram()+ggtitle("Mannequin camera error") + theme(legend.position = "none", plot.background = element_rect(fill = "#FAF7F2"))+xlab("Euclidean distance (mm)")+ylab("Number of quasi-landmarks")
-ggthemr_reset()
+ggplot(as.data.frame(t(bothcam.mqn.inter.euclid)), aes(x=V1))+geom_histogram()+ggtitle("Mannequin camera error") + theme(legend.position = "none")+xlab("Euclidean distance (mm)")+ylab("Number of quasi-landmarks")
 ```
 
 # ANOVA
