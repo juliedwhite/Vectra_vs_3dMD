@@ -1,0 +1,21 @@
+#Ignore conference material
+/AAPA2019
+
+#Ignore ANOVA analysis (for now)
+/Alejandra_Analysis
+
+#Ignore raw images, which can't be shared online per the IRB.
+/ImagesAndRegistration
+
+#Ignore the raw dense shape coordinates, which can't be shared online per the IRB
+XYZ_35ind_3DMD_7160LM.txt
+XYZ_35ind_Vectra_7160LM.txt
+All.35ind.7160LM.mat
+All.Mqn.7160LM.mat
+
+#Ignore Tom's script, which can be found on his own GitHub account
+Plot1Face.R
+Plot1Face_Tutorial.Rmd
+
+#Ignore RData, since it could be used to recreate the raw images
+.RData
