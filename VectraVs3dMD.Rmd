@@ -23,6 +23,7 @@ library(mixOmics)
 library(dplyr)
 library(ggpubr)
 library(ggthemr)
+library(tidyr)
 ```
 
 Plot1Face script
@@ -35,6 +36,17 @@ RefScan_Vertices <- as.matrix(RefScan[which(RefScan$V1 == "v"), 2:4])
 
 #Remove RefScan since we don't need it anymore
 rm(RefScan)
+```
+
+Technical error of measurement function, extended to be useful for two or three measurements. Function can be found here: https://stackoverflow.com/questions/32041102/technical-error-of-measurement-tem-for-3-or-more-participants
+
+Paper reference: Goto and Mascie-Taylor, JPA, 2007
+```{r}
+tem <- function(M) {
+    nrows <- nrow(M)
+    ncols <- ncol(M)
+    sqrt(sum(apply(M,1,function(x) sum(x^2) - sum(x)^2/ncols))/(nrows*(ncols-1)))
+}
 ```
 
 # Data
@@ -200,6 +212,39 @@ ggplot(melt(md.35ind.mapping.euclid.mean), aes(x = variable, y = value))+geom_bo
 Plot on face
 ```{r}
 Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = rowMeans(md.35ind.mapping.euclid.mean), title = "3dMD registration error \n Averaged across all participant images")
+```
+
+Technical error of measurement (TEM) calculation
+We want to calculate the TEM for each landmark, across all images, with the three mappings as three "observers" so I should end up with a single list of 7160 numbers
+
+I'm going to calculate relative TEM, but I don't think this is a valuable measurement because the distances themselves (distance between mappings and the centroid) is not a biological distance but one that we have calculated to assess mapping error. If it is a "good" mapping, then the distance will be very small, which will lead to quite large rTEM values. 
+```{r}
+#Create new dataframe to store the results per landmark
+md.35ind.mapping.euclid.tem <- matrix(nrow = 7160,ncol=3,dimnames=list(NULL,c("TEM", "rTEM", "R")))
+
+#Add columns to distance information as grouping variables 
+#md.35ind.mapping.euclid <- as.data.frame(md.35ind.mapping.euclid)
+#md.35ind.mapping.euclid$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
+#md.35ind.mapping.euclid$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
+#md.35ind.mapping.euclid$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
+
+#For each landmark, arrange the three mappings of each image in columns and images in rows, then calculate the TEM and store it, then calculate relative TEM and coefficient of reliability
+for (i in 1:7160){
+  tmp <- md.35ind.mapping.euclid[c(i,7161:7163)]
+  M <- tmp %>% spread(Mapping, colnames(tmp)[1]) %>% select(c("M1", "M2", "M3"))
+  md.35ind.mapping.euclid.tem[i,1] <- tem(M)
+  md.35ind.mapping.euclid.tem[i,2] <- (tem(M)/mean(as.matrix(M)))*100
+  md.35ind.mapping.euclid.tem[i,3] <- 1-(tem(M)^2/sd(as.matrix(M))^2)
+}
+```
+
+Plot TEM on the face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = md.35ind.mapping.euclid.tem[,1], title = "Mapping TEM")
+```
+Plot coefficient of reliability on the face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = md.35ind.mapping.euclid.tem[,3], title = "Mapping Coefficient of Reliability")
 ```
 
 #### Mannequin 
