@@ -24,6 +24,10 @@ library(dplyr)
 library(ggpubr)
 library(ggthemr)
 library(tidyr)
+library(gmodels)
+library(foreach)
+library(doParallel)
+library(purr)
 ```
 
 Plot1Face script
@@ -42,10 +46,42 @@ Technical error of measurement function, extended to be useful for two or three 
 
 Paper reference: Goto and Mascie-Taylor, JPA, 2007
 ```{r}
+#TEM function
 tem <- function(M) {
     nrows <- nrow(M)
     ncols <- ncol(M)
     sqrt(sum(apply(M,1,function(x) sum(x^2) - sum(x)^2/ncols))/(nrows*(ncols-1)))
+}
+
+#Rewrite the function for bootstrapping
+tem.bootstrap <- function(splits) {
+  nrows <- nrow(analysis(splits))
+  ncols <- ncol(analysis(splits))
+  return(sqrt(sum(apply(analysis(splits),1,function(x) sum(x^2) - sum(x)^2/ncols))/(nrows*(ncols-1))))
+}
+
+#rTEM function
+rTEM <- function(M) {tem(M)/mean(as.matrix(M))*100}
+
+#R function 
+tem.R <- function(M) {1-tem(M)^2/sd(as.matrix(M))^2}
+
+#Write a function to find R while bootstrapping
+tem.R.bootstrap <- function(splits){
+  1-(tem.bootstrap(splits)^2/sd(as.matrix(analysis(splits)))^2)
+}
+
+#Function to calculate the CI on the bootstrapped sample
+tem.CI.bootstrap <- function(M) {
+  M %>%
+    bootstraps(., times=10000) %>%
+    mutate(TEM = map(splits, tem.bootstrap), R = map(splits, tem.R.bootstrap)) %>%
+    unnest(TEM) %>%
+    unnest(R) %>%
+    summarize(tem.lower95 = quantile(TEM, 0.05/2),
+              tem.upper95 = quantile(TEM, 1-(0.05/2)),
+              R.lower95 = quantile(R, 0.05/2), 
+              R.upper95 = quantile(R, 1-(0.05/2)))
 }
 ```
 
@@ -217,25 +253,69 @@ Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = rowMe
 Technical error of measurement (TEM) calculation
 We want to calculate the TEM for each landmark, across all images, with the three mappings as three "observers" so I should end up with a single list of 7160 numbers
 
-I'm going to calculate relative TEM, but I don't think this is a valuable measurement because the distances themselves (distance between mappings and the centroid) is not a biological distance but one that we have calculated to assess mapping error. If it is a "good" mapping, then the distance will be very small, which will lead to quite large rTEM values. 
+I'm going to calculate relative TEM, but I don't think this is a valuable measurement because the distances themselves (distance between mappings and the centroid) is not a biological distance but one that we have calculated to assess mapping error. If it is a "good" mapping, then the distance will be very small, which will lead to quite large rTEM values.
 ```{r}
-#Create new dataframe to store the results per landmark
-md.35ind.mapping.euclid.tem <- matrix(nrow = 7160,ncol=3,dimnames=list(NULL,c("TEM", "rTEM", "R")))
-
 #Add columns to distance information as grouping variables 
 #md.35ind.mapping.euclid <- as.data.frame(md.35ind.mapping.euclid)
 #md.35ind.mapping.euclid$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
 #md.35ind.mapping.euclid$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
 #md.35ind.mapping.euclid$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
 
-#For each landmark, arrange the three mappings of each image in columns and images in rows, then calculate the TEM and store it, then calculate relative TEM and coefficient of reliability
-for (i in 1:7160){
-  tmp <- md.35ind.mapping.euclid[c(i,7161:7163)]
-  M <- tmp %>% spread(Mapping, colnames(tmp)[1]) %>% select(c("M1", "M2", "M3"))
-  md.35ind.mapping.euclid.tem[i,1] <- tem(M)
-  md.35ind.mapping.euclid.tem[i,2] <- (tem(M)/mean(as.matrix(M)))*100
-  md.35ind.mapping.euclid.tem[i,3] <- 1-(tem(M)^2/sd(as.matrix(M))^2)
-}
+#For each landmark, arrange the three mappings of each image in columns and images in rows, then calculate the TEM and store it, then calculate relative TEM and coefficient of reliability. Run in parallel.
+cores = detectCores()
+cl <- makeCluster(cores[1]-1)
+registerDoParallel(cl)
+
+#Make a list with the mapping distances for each landmark
+system.time(
+  md.35ind.mapping.euclid.list <- foreach(i=1:7160, .packages=c('dplyr', 'tidyr')) %dopar% {
+    md.35ind.mapping.euclid %>%
+      select(c(i,7161:7163)) %>%
+      spread(Mapping, colnames(.)[1]) %>%
+      select(c("M1", "M2", "M3"))
+    }
+)
+#Took 18 minutes to run
+
+#Stop the cluster
+stopCluster(cl)
+
+#Calculate TEM
+md.35ind.mapping.euclid.tem$TEM <- sapply(md.35ind.mapping.euclid.list, tem, simplify = TRUE)
+
+#Calculate rTEM
+md.35ind.mapping.euclid.tem$rTEM <- sapply(md.35ind.mapping.euclid.list, rTEM, simplify = TRUE)
+
+#Calculate R
+md.35ind.mapping.euclid.tem$R <- sapply(md.35ind.mapping.euclid.list , tem.R, simplify=TRUE)
+
+#Make into dataframe
+md.35ind.mapping.euclid.tem <- as.data.frame(md.35ind.mapping.euclid.tem)
+```
+
+```{r}
+#Calculate the confidence intervals after bootstrapping 10,000 times 
+#Make cluster
+cl<-makeCluster(cores[1]-1, type="PSOCK")
+
+#Load packages onto cores
+clusterEvalQ(cl, c(library(dplyr), library(purrr), library(rsample)))
+#Export needed functions to cores
+clusterExport(cl, c("tem.CI.bootstrap", "tem.R.bootstrap", "tem.bootstrap"))
+
+#Calculate CI for TEM and R
+system.time(
+  md.35ind.mapping.euclid.CI <- parLapply(cl, md.35ind.mapping.euclid.list, tem.CI.bootstrap)
+)
+
+#Close cluster
+stopCluster(cl)
+
+#Make CI stats into dataframe
+md.35ind.mapping.euclid.CI <- list.rbind(md.35ind.mapping.euclid.CI)
+
+#Bind the statistics all together
+md.35ind.mapping.euclid.tem <- cbind(md.35ind.mapping.euclid.tem, md.35ind.mapping.euclid.CI)
 ```
 
 Plot TEM on the face
