@@ -1,0 +1,1677 @@
+---
+title: "Vectra vs. 3dMd V3"
+author: "Julie White"
+date: "June 4, 2019"
+output: html_notebook
+---
+
+# Packages and functions
+```{r,echo=FALSE}
+library(tidyverse)
+library(reshape2)
+library(RRPP)
+library(geomorph)
+library(proxy)
+library(plotly)
+library(mixOmics)
+library(ggpubr)
+library(Morpho)
+library(abind)
+library(R.matlab)
+library(nlme)
+```
+
+Plot1Face script
+This script was written by Tomas Gonzalez-Zarzar and can be found at https://github.com/Arslan-Zaidi/Facial_masculinity_MHC/tree/master/Tutorial_visualizing_facial_heatmaps
+```{r}
+source('Plot1Face.R')
+RefScan <- read.table("FacialTemplate_20171201.obj", sep = "\t", header = F, colClasses = c("character", rep("numeric", 3)))
+RefScan_Facets <- as.matrix(RefScan[which(RefScan$V1 == "f"), 2:4])
+RefScan_Vertices <- as.matrix(RefScan[which(RefScan$V1 == "v"), 2:4])
+
+#Remove RefScan since we don't need it anymore
+rm(RefScan)
+```
+
+# Dense landmark data
+315 rows = 35 people * 3 replicate images * 3 registrations. Rows 1-105 is 1st registration; 106-210 is 2nd registration; 211-315 is 3rd registration. Within registration, P1_Rep1, P1_Rep2, P1_Rep3
+21480 variables = x, y, and z of the 7160 coordinates of the mask
+```{r}
+#Read the 3DMD data 
+md.35ind <- read_csv("XYZ_35ind_3DMD_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+
+#3DMD upsampled data
+md.35ind.up <- read_csv("XYZ_35ind_3DMD_Up_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each =3)), col_types = cols(.default = col_double()))
+
+md.mqn <- read_csv("XYZ_Mqn_3DMD_7160LM_2.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+
+#Read in the Vectra data
+v.35ind <- read_csv("XYZ_35ind_Vectra_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+
+v.mqn <- read_csv("XYZ_Mqn_Vectra_7160LM_2.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+```
+
+Add columns to the dataframe as grouping variables
+```{r}
+#3dmd
+#35 ind
+md.35ind$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
+md.35ind$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
+md.35ind$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
+
+#3dmd upsampled
+md.35ind.up$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
+md.35ind.up$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
+md.35ind.up$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
+
+#Mannequin
+md.mqn$Replicate <- factor(c(rep(c("R1", "R2", "R3"), times = 3)))
+md.mqn$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 3)))
+
+#Vectra
+#35 ind
+v.35ind$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
+v.35ind$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
+v.35ind$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
+
+#Mannequin
+v.mqn$Replicate <- factor(c(rep(c("R1", "R2", "R3"), times = 3)))
+v.mqn$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 3)))
+```
+
+# Within-camera registration error
+## Euclidean distance between mapping centroid and each mapping
+### 35 ind
+#### 3dMD
+Calculate the centroid of each mapping and place into 3d array
+```{r}
+#Calculate the centroid of each replicate image (across 3 mappings)
+md.35ind.mapping.centroid <- md.35ind %>%
+  group_by(Individual, Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean) %>%
+  {. ->> tmp} %>%
+  ungroup() %>%
+  dplyr::select(-c(Individual, Replicate)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name the third dimension with Individual and Replicate info
+dimnames(md.35ind.mapping.centroid)[[3]] <- paste(tmp$Individual, tmp$Replicate, sep=".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Place the full 35 ind data into 3d array
+```{r}
+#Reorder the mappings by individual and then replicate and then turn into 3d array
+md.35ind.array <- md.35ind %>%
+  group_by(Individual, Replicate) %>%
+  arrange(.by_group = TRUE) %>%
+  {. ->> tmp} %>%
+  ungroup () %>%
+  dplyr::select(-c(Individual, Replicate, Mapping)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name with Individual.Replicate.Mapping
+dimnames(md.35ind.array)[[3]] <- paste(tmp$Individual, tmp$Replicate, tmp$Mapping, sep = ".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Calculate the euclidean distance between M1, M2, M3 and M.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+md.35ind.regerror.euclid <- matrix(nrow=315, ncol=7160)
+
+#Create an index with numbers we'll need to extract the array elements
+indx <- seq(1,315,3)
+
+#Calculate the distance between the mappings and the centroid of the mappings, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#.R1.M1
+  md.35ind.regerror.euclid[indx[i],] <- diag(dist(md.35ind.mapping.centroid[,,i], md.35ind.array[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M2
+  md.35ind.regerror.euclid[indx[i]+1,] <- diag(dist(md.35ind.mapping.centroid[,,i], md.35ind.array[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M3
+  md.35ind.regerror.euclid[indx[i]+2,] <- diag(dist(md.35ind.mapping.centroid[,,i], md.35ind.array[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+md.35ind.regerror.euclid <- as.data.frame(md.35ind.regerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(md.35ind.array)[[3]], split = "\\."))
+md.35ind.regerror.euclid$Individual <- names[grep(pattern="P", x=names)]
+md.35ind.regerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+md.35ind.regerror.euclid$Mapping <- names[grep(pattern="M", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+md.35ind.regerror.euclid.mean <- md.35ind.regerror.euclid %>%
+  group_by(Individual, Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean)
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(md.35ind.regerror.euclid.mean, select=-c(Individual,Replicate))))
+
+#Write table to create image in MatLab
+write.table(colMeans(subset(md.35ind.regerror.euclid.mean, select=-c(Individual,Replicate))), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/Figure1_35ind_RegistrationError/md.35ind.regerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+##### 3dMD upsampled
+Calculate the centroid of each mapping and place into 3d array
+```{r}
+#Calculate the centroid of each replicate image (across 3 mappings)
+md.35ind.up.mapping.centroid <- md.35ind.up %>%
+  group_by(Individual, Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean) %>%
+  {. ->> tmp} %>%
+  ungroup() %>%
+  dplyr::select(-c(Individual, Replicate)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name the third dimension with Individual and Replicate info
+dimnames(md.35ind.up.mapping.centroid)[[3]] <- paste(tmp$Individual, tmp$Replicate, sep=".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Place the full 35 ind data into 3d array
+```{r}
+#Reorder the mappings by individual and then replicate and then turn into 3d array
+md.35ind.up.array <- md.35ind.up %>%
+  group_by(Individual, Replicate) %>%
+  arrange(.by_group = TRUE) %>%
+  {. ->> tmp} %>%
+  ungroup () %>%
+  dplyr::select(-c(Individual, Replicate, Mapping)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name with Individual.Replicate.Mapping
+dimnames(md.35ind.up.array)[[3]] <- paste(tmp$Individual, tmp$Replicate, tmp$Mapping, sep = ".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Calculate the euclidean distance between M1, M2, M3 and M.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+md.35ind.up.regerror.euclid <- matrix(nrow=315, ncol=7160)
+
+#Create an index with numbers we'll need to extract the array elements
+indx <- seq(1,315,3)
+
+#Calculate the distance between the mappings and the centroid of the mappings, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#.R1.M1
+  md.35ind.up.regerror.euclid[indx[i],] <- diag(dist(md.35ind.up.mapping.centroid[,,i], md.35ind.up.array[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M2
+  md.35ind.up.regerror.euclid[indx[i]+1,] <- diag(dist(md.35ind.up.mapping.centroid[,,i], md.35ind.up.array[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M3
+  md.35ind.up.regerror.euclid[indx[i]+2,] <- diag(dist(md.35ind.up.mapping.centroid[,,i], md.35ind.up.array[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+md.35ind.up.regerror.euclid <- as.data.frame(md.35ind.up.regerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(md.35ind.up.array)[[3]], split = "\\."))
+md.35ind.up.regerror.euclid$Individual <- names[grep(pattern="P", x=names)]
+md.35ind.up.regerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+md.35ind.up.regerror.euclid$Mapping <- names[grep(pattern="M", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+md.35ind.up.regerror.euclid.mean <- md.35ind.up.regerror.euclid %>%
+  group_by(Individual, Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean)
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(md.35ind.up.regerror.euclid.mean, select=-c(Individual,Replicate))))
+
+#Write table to create image in MatLab
+#write.table(colMeans(subset(md.35ind.up.regerror.euclid.mean, select=-c(Individual,Replicate))), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/Figure1_35ind_RegistrationError/md.35ind.up.regerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Vectra
+Calculate the centroid of each mapping and place into 3d array
+```{r}
+#Calculate the centroid of each replicate image (across 3 mappings)
+v.35ind.mapping.centroid <- v.35ind %>%
+  group_by(Individual, Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean) %>%
+  {. ->> tmp} %>%
+  ungroup() %>%
+  dplyr::select(-c(Individual, Replicate)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name the third dimension with Individual and Replicate info
+dimnames(v.35ind.mapping.centroid)[[3]] <- paste(tmp$Individual, tmp$Replicate, sep=".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Place the full 35 ind data into 3d array
+```{r}
+#Reorder the mappings by individual and then replicate and then turn into 3d array
+v.35ind.array <- v.35ind %>%
+  group_by(Individual, Replicate) %>%
+  arrange(.by_group = TRUE) %>%
+  {. ->> tmp} %>%
+  ungroup () %>%
+  dplyr::select(-c(Individual, Replicate, Mapping)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name with Individual.Replicate.Mapping
+dimnames(v.35ind.array)[[3]] <- paste(tmp$Individual, tmp$Replicate, tmp$Mapping, sep = ".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Calculate the euclidean distance between M1, M2, M3 and M.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+v.35ind.regerror.euclid <- matrix(nrow=315, ncol=7160)
+
+#Create an index with numbers we'll need to extract the array elements
+indx <- seq(1,315,3)
+
+#Calculate the distance between the mappings and the centroid of the mappings, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#.R1.M1
+  v.35ind.regerror.euclid[indx[i],] <- diag(dist(v.35ind.mapping.centroid[,,i], v.35ind.array[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M2
+  v.35ind.regerror.euclid[indx[i]+1,] <- diag(dist(v.35ind.mapping.centroid[,,i], v.35ind.array[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M3
+  v.35ind.regerror.euclid[indx[i]+2,] <- diag(dist(v.35ind.mapping.centroid[,,i], v.35ind.array[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+v.35ind.regerror.euclid <- as.data.frame(v.35ind.regerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(v.35ind.array)[[3]], split = "\\."))
+v.35ind.regerror.euclid$Individual <- names[grep(pattern="P", x=names)]
+v.35ind.regerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+v.35ind.regerror.euclid$Mapping <- names[grep(pattern="M", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+v.35ind.regerror.euclid.mean <- v.35ind.regerror.euclid %>%
+  group_by(Individual, Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean)
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(v.35ind.regerror.euclid.mean, select=-c(Individual,Replicate))))
+
+#Write table for MatLab figures
+write.table(colMeans(subset(v.35ind.regerror.euclid.mean, select=-c(Individual,Replicate))), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/Figure1_35ind_RegistrationError/v.35ind.regerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Compare 3dMD and Vectra
+```{r}
+#Stack the two dataframes of sd statistics on top of each other
+b.35ind.regerror.euclid.mean <- rbind(md.35ind.regerror.euclid.mean, v.35ind.regerror.euclid.mean)
+
+#Add a column telling which camera each came from
+b.35ind.regerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.35ind.regerror.euclid.mean)), rep("Vectra", times = nrow(v.35ind.regerror.euclid.mean)))
+
+#Reorder the factor levels by number
+b.35ind.regerror.euclid.mean$Individual <- factor(b.35ind.regerror.euclid.mean$Individual, levels = c(paste0("P", 1:35)))
+
+#Plot with outliers
+p <- ggplot(melt(b.35ind.regerror.euclid.mean, id.vars = c("Individual", "Replicate", "Camera")), aes(x = Individual, y=value, fill=Camera))+ylab("Euclidean distance (mm)")+geom_boxplot(outlier.size = 0.25)+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+scale_fill_manual(values = c("#0D646B", "#C75E24"))+scale_color_manual(values = c("#0D646B", "#C75E24"))
+
+p
+
+#ggsave(filename = "ManuscriptFiguresAndTables/b.35ind.regerror.euclid.pdf", plot = p, device = "pdf", width = 6.5, height = 5, units = "in")
+```
+
+Wilcoxon test for comparison of means per individual
+```{r}
+b.35ind.regerror.euclid.mean.wilcox <- compare_means(data = melt(b.35ind.regerror.euclid.mean, id.vars = c("Individual", "Replicate", "Camera")), formula = value ~ Camera, group.by = c("Individual"), paired = FALSE)
+
+write.table(b.35ind.regerror.eculid.mean.wilcox, file = "ManuscriptFiguresAndTables/b.35ind.regerror.euclid.mean.wilcox.txt", row.names = F, col.names = T, quote = F, sep = "\t")
+```
+
+Plot per camera instead of per person, and perform Wilcoxon test on mean comparison
+```{r}
+tmp <- b.35ind.regerror.euclid.mean %>% 
+  group_by(Individual, Replicate, Camera) %>%
+  ungroup() %>%
+  mutate(Avg = rowMeans(.[,-c(which(colnames(b.35ind.regerror.euclid.mean) %in% c("Individual", "Replicate", "Camera")))])) %>%
+  dplyr::select(Individual, Replicate, Camera, Avg)
+  
+p <- ggplot(tmp, aes(x = Camera, y=Avg, fill = Camera))+geom_point(aes(x = Camera, y = Avg), size = 0.25)+geom_boxplot(outlier.alpha = 0, coef = 0, alpha = 0.75)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())+stat_compare_means(method = "wilcox.test", paired = FALSE, label.x = 2)
+
+#ggsave(filename = "ManuscriptFiguresAndTables/RegistrationError/b.35ind.regerror.euclid.per.camera.pdf", plot = p, device = "pdf", width = 6 , height = 6, units = "in")
+
+p
+```
+
+### Mannequin
+#### 3dMD
+Calculate the centroid of each mapping and place into 3d array
+```{r}
+#Calculate the centroid of each replicate image (across 3 mappings)
+md.mqn.mapping.centroid <- md.mqn %>%
+  group_by(Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean) %>%
+  {. ->> tmp} %>%
+  ungroup() %>%
+  dplyr::select(-Replicate) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name the items of the array with Individual and Replicate info
+dimnames(md.mqn.mapping.centroid)[[3]] <- tmp$Replicate
+
+#Remove clutter
+rm(tmp)
+```
+
+Place the full data into 3d array
+```{r}
+#Reorder the mappings by replicate and then turn into 3d array
+md.mqn.array <- md.mqn %>%
+  group_by(Replicate) %>%
+  arrange(.by_group = TRUE) %>%
+  {. ->> tmp} %>%
+  ungroup () %>%
+  dplyr::select(-c(Replicate, Mapping)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name with Individual.Replicate.Mapping
+dimnames(md.mqn.array)[[3]] <- paste(tmp$Replicate, tmp$Mapping, sep = ".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Calculate the euclidean distance between M1, M2, M3 and M.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+md.mqn.regerror.euclid <- matrix(nrow=9, ncol=7160)
+
+#Create an index with numbers we'll need to extract the array elements
+indx <- seq(1,9,3)
+
+#Calculate the distance between the mappings and the centroid of the mappings, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#.R1.M1
+  md.mqn.regerror.euclid[indx[i],] <- diag(dist(md.mqn.mapping.centroid[,,i], md.mqn.array[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M2
+  md.mqn.regerror.euclid[indx[i]+1,] <- diag(dist(md.mqn.mapping.centroid[,,i], md.mqn.array[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M3
+  md.mqn.regerror.euclid[indx[i]+2,] <- diag(dist(md.mqn.mapping.centroid[,,i], md.mqn.array[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+md.mqn.regerror.euclid <- as.data.frame(md.mqn.regerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(md.mqn.array)[[3]], split = "\\."))
+md.mqn.regerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+md.mqn.regerror.euclid$Mapping <- names[grep(pattern="M", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+md.mqn.regerror.euclid.mean <- md.mqn.regerror.euclid %>%
+  group_by(Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean)
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(md.mqn.regerror.euclid.mean, select=-c(Replicate))))
+
+#Write table for MatLab figures
+#write.table(colMeans(subset(md.mqn.regerror.euclid.mean, select=-c(Replicate))), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/FigureS3_Mannequin_RegistrationError/md.mqn.regerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Vectra
+Calculate the centroid of each mapping and place into 3d array
+```{r}
+#Calculate the centroid of each replicate image (across 3 mappings)
+v.mqn.mapping.centroid <- v.mqn %>%
+  group_by(Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean) %>%
+  {. ->> tmp} %>%
+  ungroup() %>%
+  dplyr::select(-Replicate) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name the items of the array with Individual and Replicate info
+dimnames(v.mqn.mapping.centroid)[[3]] <- tmp$Replicate
+
+#Remove clutter
+rm(tmp)
+```
+
+Place the full data into 3d array
+```{r}
+#Reorder the mappings by replicate and then turn into 3d array
+v.mqn.array <- v.mqn %>%
+  group_by(Replicate) %>%
+  arrange(.by_group = TRUE) %>%
+  {. ->> tmp} %>%
+  ungroup () %>%
+  dplyr::select(-c(Replicate, Mapping)) %>%
+  arrayspecs(., p=7160, k=3)
+
+#Name with Individual.Replicate.Mapping
+dimnames(v.mqn.array)[[3]] <- paste(tmp$Replicate, tmp$Mapping, sep = ".")
+
+#Remove clutter
+rm(tmp)
+```
+
+Calculate the euclidean distance between M1, M2, M3 and M.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+v.mqn.regerror.euclid <- matrix(nrow=9, ncol=7160)
+
+#Create an index with numbers we'll need to extract the array elements
+indx <- seq(1,9,3)
+
+#Calculate the distance between the mappings and the centroid of the mappings, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#.R1.M1
+  v.mqn.regerror.euclid[indx[i],] <- diag(dist(v.mqn.mapping.centroid[,,i], v.mqn.array[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M2
+  v.mqn.regerror.euclid[indx[i]+1,] <- diag(dist(v.mqn.mapping.centroid[,,i], v.mqn.array[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R1 and P#.R1.M3
+  v.mqn.regerror.euclid[indx[i]+2,] <- diag(dist(v.mqn.mapping.centroid[,,i], v.mqn.array[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+v.mqn.regerror.euclid <- as.data.frame(v.mqn.regerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(v.mqn.array)[[3]], split = "\\."))
+v.mqn.regerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+v.mqn.regerror.euclid$Mapping <- names[grep(pattern="M", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+v.mqn.regerror.euclid.mean <- v.mqn.regerror.euclid %>%
+  group_by(Replicate) %>%
+  dplyr::select(-Mapping) %>%
+  summarise_all(.funs = mean)
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(v.mqn.regerror.euclid.mean, select=-c(Replicate))))
+
+#Write table for MatLab figures
+#write.table(colMeans(subset(v.mqn.regerror.euclid.mean, select=-c(Replicate))), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/FigureS3_Mannequin_RegistrationError/v.mqn.regerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Compare 3dMD and Vectra
+```{r}
+#Stack the two dataframes of sd statistics on top of each other
+b.mqn.regerror.euclid.mean <- rbind(md.mqn.regerror.euclid.mean, v.mqn.regerror.euclid.mean)
+
+#Add a column telling which camera each came from
+b.mqn.regerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.mqn.regerror.euclid.mean)), rep("Vectra", times = nrow(v.mqn.regerror.euclid.mean)))
+
+#Set up data frame for anova 
+tmp <- melt(b.mqn.regerror.euclid.mean, id.vars = c("Replicate", "Camera"))
+tmp$Replicate <- as.factor(tmp$Replicate)
+tmp$Camera <- as.factor(tmp$Camera)
+
+#Perform global test
+test <- lme(value ~ Camera, random = ~1|Replicate, data = tmp)
+testaov <- anova(test)
+
+#Plot
+p <- ggplot(melt(b.mqn.regerror.euclid.mean, id.vars = c("Replicate", "Camera")), aes(x = Replicate, y=value, fill=Camera))+scale_fill_manual(values = c("#0D646B", "#C75E24"))+geom_boxplot(outlier.size = 0.25)+theme_bw()+ylab("Euclidean distance (mm)")+theme(legend.position = "bottom")
+
+p
+
+ggsave(filename = "ManuscriptFiguresAndTables/FigureS3_Mannequin_RegistrationError/b.mqn.regerror.euclid.powder.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
+```
+
+# Within-camera "biological" error
+Here we'll calculate the differences between the three different replicate images of the same person. 
+## Align the three replicate images
+We calculated the centroid of each replicate image by averaging together the coordinates of the three mappings already. Now we want to pull out the three replicate images for each person and GPA align those, then extract the aligned coordinates. 
+### 35 ind
+#### 3dMD
+```{r}
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with three items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(md.35ind.mapping.centroid)[[3]]))
+
+#3d array to store the GPA aligned coordinates
+md.35ind.mapping.centroid.aligned <- NULL
+
+#3d array to store the mshape, which is the centroid of 
+md.35ind.replicate.centroid <- NULL
+
+#List to store the names so we dont get lost
+namelist <- NULL
+
+#For each item in ind.index, pull out the three replicates for each image and convert to a 3d array. 
+for (i in 1:length(ind.index)){
+  #Pull out the three matrices that correspond to a single person
+  tmp <- md.35ind.mapping.centroid[,,ind.index[[i]]]
+  #GPA align without scaling or reflecting
+  tmp.gpa <- ProcGPA(tmp, scale = FALSE, reflection = FALSE)
+  #Pull out the aligned coordinates and place them to a 3d array
+  md.35ind.mapping.centroid.aligned <- abind(md.35ind.mapping.centroid.aligned, tmp.gpa$rotated, along = 3)
+  #Pull out the dimnames and add them to a list of names
+  namelist <- append(namelist, dimnames(tmp.gpa$rotated)[[3]])
+  #Pull out the mean shape of the three replicate images and put into 3d array 
+  md.35ind.replicate.centroid <- abind(md.35ind.replicate.centroid, tmp.gpa$mshape, along = 3)
+}
+
+#Assign names to the centroid of the replicates, using a pared down version of the namelist. The names in this list are in the same order as the data because they were constructed together. 
+dimnames(md.35ind.replicate.centroid)[[3]] <- unique(unlist(strsplit(namelist, split = ".R[0-3]")))
+
+#Remove the clutter
+rm(ind, ind.index, namelist, tmp, tmp.gpa, i)
+```
+
+#### Vectra
+```{r}
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with three items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(v.35ind.mapping.centroid)[[3]]))
+
+#3d array to store the GPA aligned coordinates
+v.35ind.mapping.centroid.aligned <- NULL
+
+#3d array to store the mshape, which is the centroid of 
+v.35ind.replicate.centroid <- NULL
+
+#List to store the names so we dont get lost
+namelist <- NULL
+
+#For each item in the ind.index list, pull out the three replicates for each image and convert to a 3d array. 
+for (i in 1:length(ind.index)){
+  #Pull out the three matrices that correspond to a single person
+  tmp <- v.35ind.mapping.centroid[,,ind.index[[i]]]
+  #GPA align without scaling or reflecting
+  tmp.gpa <- ProcGPA(tmp, scale = FALSE, reflection = FALSE)
+  #Pull out the aligned coordinates and place them to a 3d array
+  v.35ind.mapping.centroid.aligned <- abind(v.35ind.mapping.centroid.aligned, tmp.gpa$rotated, along = 3)
+  #Pull out the dimnames and add them to a list of names
+  namelist <- append(namelist, dimnames(tmp.gpa$rotated)[[3]])
+  #Pull out the mean shape of the three replicate images and put into 3d array 
+  v.35ind.replicate.centroid <- abind(v.35ind.replicate.centroid, tmp.gpa$mshape, along = 3)
+}
+
+#Assign names to the centroid of the replicates, using a pared down version of the namelist. The names in this list are in the same order as the data because they were constructed together. 
+dimnames(v.35ind.replicate.centroid)[[3]] <- unique(unlist(strsplit(namelist, split = ".R[0-3]")))
+
+#Remove the clutter
+rm(ind, ind.index, namelist, tmp, tmp.gpa, i)
+```
+
+### Mannequin
+#### 3dMD
+We only took three pictures of the mannequin, so we don't have to go through the same extraction process as with the 35 ind. 
+```{r}
+#GPA align the images
+md.mqn.mapping.centroid.gpa <- ProcGPA(md.mqn.mapping.centroid, scale = FALSE, reflection = FALSE)
+
+#Extract the aligned coordinates
+md.mqn.mapping.centroid.aligned <- md.mqn.mapping.centroid.gpa$rotated
+
+#Extract the mean shape
+md.mqn.replicate.centroid <- md.mqn.mapping.centroid.gpa$mshape
+
+#Remove the clutter
+rm(md.mqn.mapping.centroid.gpa)
+```
+
+#### Vectra
+```{r}
+#GPA align the images
+v.mqn.mapping.centroid.gpa <- ProcGPA(v.mqn.mapping.centroid, scale = FALSE, reflection = FALSE)
+
+#Extract the aligned coordinates
+v.mqn.mapping.centroid.aligned <- v.mqn.mapping.centroid.gpa$rotated
+
+#Extract the mean shape
+v.mqn.replicate.centroid <- v.mqn.mapping.centroid.gpa$mshape
+
+#Remove the clutter
+rm(v.mqn.mapping.centroid.gpa)
+```
+
+## Euclidean distance between each replicate image and the centroid of the replicates
+### 35 ind
+#### 3dMD
+Calculate the euclidean distance between R1, R2, R3 and Replicate.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+md.35ind.bioerror.euclid <- matrix(nrow=105, ncol=7160)
+
+#Create an index with numbers we'll need to extract the list elements
+indx <- seq(1,105,3)
+
+#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#
+  md.35ind.bioerror.euclid[indx[i],] <- diag(dist(md.35ind.replicate.centroid[,,i], md.35ind.mapping.centroid.aligned[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R2 and P#
+  md.35ind.bioerror.euclid[indx[i]+1,] <- diag(dist(md.35ind.replicate.centroid[,,i], md.35ind.mapping.centroid.aligned[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R3 and P#
+  md.35ind.bioerror.euclid[indx[i]+2,] <- diag(dist(md.35ind.replicate.centroid[,,i], md.35ind.mapping.centroid.aligned[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+md.35ind.bioerror.euclid <- as.data.frame(md.35ind.bioerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(md.35ind.mapping.centroid.aligned)[[3]], split = "\\."))
+md.35ind.bioerror.euclid$Individual <- names[grep(pattern="P", x=names)]
+md.35ind.bioerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+md.35ind.bioerror.euclid.mean <- md.35ind.bioerror.euclid %>%
+  group_by(Individual) %>%
+  dplyr::select(-Replicate) %>%
+  summarise_all(.funs = mean)
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(md.35ind.bioerror.euclid.mean, select=-Individual)))
+
+#Write table for MatLab figures
+#write.table(colMeans(subset(md.35ind.bioerror.euclid.mean, select=-Individual)), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/Figure2_35ind_BiologicalError/md.35ind.bioerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Vectra
+Calculate the euclidean distance between R1, R2, R3 and Replicate.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+v.35ind.bioerror.euclid <- matrix(nrow=105, ncol=7160)
+
+#Create an index with numbers we'll need to extract the list elements
+indx <- seq(1,105,3)
+
+#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#
+  v.35ind.bioerror.euclid[indx[i],] <- diag(dist(v.35ind.replicate.centroid[,,i], v.35ind.mapping.centroid.aligned[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R2 and P#
+  v.35ind.bioerror.euclid[indx[i]+1,] <- diag(dist(v.35ind.replicate.centroid[,,i], v.35ind.mapping.centroid.aligned[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R3 and P#
+  v.35ind.bioerror.euclid[indx[i]+2,] <- diag(dist(v.35ind.replicate.centroid[,,i], v.35ind.mapping.centroid.aligned[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+v.35ind.bioerror.euclid <- as.data.frame(v.35ind.bioerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(v.35ind.mapping.centroid.aligned)[[3]], split = "\\."))
+v.35ind.bioerror.euclid$Individual <- names[grep(pattern="P", x=names)]
+v.35ind.bioerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+v.35ind.bioerror.euclid.mean <- v.35ind.bioerror.euclid %>%
+  group_by(Individual) %>%
+  dplyr::select(-Replicate) %>%
+  summarise_all(.funs = mean)
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(v.35ind.bioerror.euclid.mean, select=-Individual)))
+
+#Write table for MatLab figures
+write.table(colMeans(subset(v.35ind.bioerror.euclid.mean, select=-Individual)), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/Figure2_35ind_BiologicalError/v.35ind.bioerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Compare 3dMD and Vectra
+```{r}
+#Stack the two dataframes of sd statistics on top of each other
+b.35ind.bioerror.euclid.mean <- rbind(md.35ind.bioerror.euclid.mean, v.35ind.bioerror.euclid.mean)
+
+#Add a column telling which camera each came from
+b.35ind.bioerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.35ind.bioerror.euclid.mean)), rep("Vectra", times = nrow(v.35ind.bioerror.euclid.mean)))
+
+#Reorder the factor levels by number
+b.35ind.bioerror.euclid.mean$Individual <- factor(b.35ind.bioerror.euclid.mean$Individual, levels = c(paste0("P", 1:35)))
+
+#Plot with outliers
+p <- ggplot(melt(b.35ind.bioerror.euclid.mean, id.vars = c("Individual", "Camera")), aes(x = Individual, y=value, fill=Camera))+geom_violin()+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+ylab("Euclidean distance (mm)")+scale_fill_manual(values = c("#0D646B", "#C75E24"))
+
+p
+
+#ggsave(filename = "ManuscriptFiguresAndTables/b.35ind.bioerror.euclid.mean.pdf", plot = p, device = "pdf", width = 6.5, height = 5, units = "in")
+```
+
+Wilcoxon test for comparison of means per image
+```{r}
+b.35ind.bioerror.euclid.mean.wilcox <- compare_means(data = melt(b.35ind.bioerror.euclid.mean, id.vars = c("Individual", "Camera")), formula = value ~ Camera, group.by = "Individual", paired = TRUE)
+
+#write.table(b.35ind.bioerror.euclid.mean.wilcox, "ManuscriptFiguresAndTables/b.35ind.bioerror.euclid.mean.wilcox.txt", row.names = F, col.names = T, quote = F, sep = "\t")
+```
+
+Plot per camera instead of per person, and perform Wilcoxon test on mean comparison
+```{r}
+tmp <- b.35ind.bioerror.euclid.mean %>% 
+  group_by(Individual, Camera) %>%
+  ungroup() %>%
+  mutate(Avg = rowMeans(.[,-c(which(colnames(b.35ind.bioerror.euclid.mean) %in% c("Individual", "Camera")))])) %>%
+  dplyr::select(Individual, Camera, Avg)
+  
+p <- ggplot(melt(tmp, id.vars = c("Individual", "Camera")), aes(x = Camera, y=value, fill = Camera))+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Individual), colour = "black", alpha = 0.25)+geom_boxplot(outlier.shape = NA, alpha = 0.75, coef = 0)+geom_boxplot(aes(color = Camera), fatten = NULL, fill = NA, coef = 0, outlier.alpha = 0)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+scale_color_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())+stat_compare_means(method = "wilcox.test", paired = TRUE, label.x = 2)
+
+p
+
+#ggsave(filename = "ManuscriptFiguresAndTables/BiologicalError/b.35ind.bioerror.euclid.per.camera.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
+```
+
+### Mannequin
+#### 3dMD
+Calculate the euclidean distance between R1, R2, R3 and Replicate.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+md.mqn.bioerror.euclid <- matrix(nrow=3, ncol=7160)
+
+#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
+
+#Distance between R1 and centroid
+md.mqn.bioerror.euclid[1,] <- diag(dist(md.mqn.replicate.centroid, md.mqn.mapping.centroid.aligned[,,1], method = "euclidean"))
+
+#Distance between R2 and centroid
+md.mqn.bioerror.euclid[2,] <- diag(dist(md.mqn.replicate.centroid, md.mqn.mapping.centroid.aligned[,,2], method = "euclidean"))
+
+md.mqn.bioerror.euclid[3,] <- diag(dist(md.mqn.replicate.centroid, md.mqn.mapping.centroid.aligned[,,3], method = "euclidean"))
+
+#Convert the euclidean distances to a dataframe
+md.mqn.bioerror.euclid <- as.data.frame(md.mqn.bioerror.euclid)
+
+#Add names
+md.mqn.bioerror.euclid$Replicate <- dimnames(md.mqn.mapping.centroid.aligned)[[3]]
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(md.mqn.bioerror.euclid, select=-Replicate)))
+
+#Write table for MatLab figures
+#write.table(colMeans(subset(md.mqn.bioerror.euclid, select=-Replicate)), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/FigureS6_Mannequin_BiologicalError/md.mqn.bioerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Vectra
+Calculate the euclidean distance between R1, R2, R3 and Replicate.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+v.mqn.bioerror.euclid <- matrix(nrow=3, ncol=7160)
+
+#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
+
+#Distance between R1 and centroid
+v.mqn.bioerror.euclid[1,] <- diag(dist(v.mqn.replicate.centroid, v.mqn.mapping.centroid.aligned[,,1], method = "euclidean"))
+
+#Distance between R2 and centroid
+v.mqn.bioerror.euclid[2,] <- diag(dist(v.mqn.replicate.centroid, v.mqn.mapping.centroid.aligned[,,2], method = "euclidean"))
+
+v.mqn.bioerror.euclid[3,] <- diag(dist(v.mqn.replicate.centroid, v.mqn.mapping.centroid.aligned[,,3], method = "euclidean"))
+
+#Convert the euclidean distances to a dataframe
+v.mqn.bioerror.euclid <- as.data.frame(v.mqn.bioerror.euclid)
+
+#Add names
+v.mqn.bioerror.euclid$Replicate <- dimnames(v.mqn.mapping.centroid.aligned)[[3]]
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(v.mqn.bioerror.euclid, select=-Replicate)))
+
+#Write table for MatLab figures
+#write.table(colMeans(subset(v.mqn.bioerror.euclid, select=-Replicate)), "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/FigureS6_Mannequin_BiologicalError/v.mqn.bioerror.euclid.mean.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+#### Compare 3dMD and Vectra
+```{r}
+#Stack the two dataframes of sd statistics on top of each other
+b.mqn.bioerror.euclid <- rbind(md.mqn.bioerror.euclid, v.mqn.bioerror.euclid)
+
+#Add a column telling which camera each came from
+b.mqn.bioerror.euclid$Camera <- c(rep("3dMD", times = nrow(md.mqn.bioerror.euclid)), rep("Vectra", times = nrow(v.mqn.bioerror.euclid)))
+
+#Set up data frame for anova 
+tmp <- melt(b.mqn.bioerror.euclid, id.vars = c("Replicate", "Camera"))
+tmp$Replicate <- as.factor(tmp$Replicate)
+tmp$Camera <- as.factor(tmp$Camera)
+
+#Perform global test
+test <- lme(value ~ Camera, random = ~1|Replicate, data = tmp)
+testaov <- anova(test)
+testaov
+
+#Plot
+p <- ggplot(melt(b.mqn.bioerror.euclid, id.vars = c("Replicate", "Camera")), aes(x = Replicate, y=value, fill=Camera))+scale_fill_manual(values = c("#0D646B", "#C75E24"))+geom_boxplot(outlier.size = 0.25)+theme_bw()+ylab("Euclidean distance (mm)")+theme(legend.position = "bottom")
+
+p
+
+#ggsave(filename = "ManuscriptFiguresAndtables/FigureS6_Mannequin_BiologicalError/b.mqn.bioerror.euclid.mean.powder.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
+```
+
+# Camera error
+Here we'll calculate the differences between the two cameras based on the average image from each camera. 
+## Align the two images from each camera
+We calculated the centroid of each person by averaging together the coordinates of the three images already. Now we want to pull out the two images from each camera for each person and GPA align those, then extract the aligned coordinates. 
+### 35 ind
+```{r}
+#Combine the replicate centroid arrays into a single array
+b.35ind.replicate.centroid <- abind(md.35ind.replicate.centroid, v.35ind.replicate.centroid, along = 3)
+
+#Alter the dimnames so that we know which camera each individual came from 
+dimnames(b.35ind.replicate.centroid)[[3]] <- paste(dimnames(b.35ind.replicate.centroid)[[3]], rep(c("MD", "V"), each = 35), sep = ".")
+
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with two items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(b.35ind.replicate.centroid)[[3]]))
+
+#3d array to store the GPA aligned coordinates
+b.35ind.replicate.centroid.aligned <- NULL
+
+#For each item in ind.index, pull out the two images ang align
+for (i in 1:length(ind.index)){
+  #Pull out the two matrices that correspond to a single person
+  tmp <- b.35ind.replicate.centroid[,,ind.index[[i]]]
+  #GPA align without scaling or reflecting
+  tmp.gpa <- ProcGPA(tmp, scale = FALSE, reflection = FALSE)
+  #Pull out the aligned coordinates and place them to a 3d array
+  b.35ind.replicate.centroid.aligned <- abind(b.35ind.replicate.centroid.aligned, tmp.gpa$rotated, along = 3)
+}
+
+#Remove the clutter
+rm(ind, ind.index, tmp, tmp.gpa, i)
+```
+
+### Mannequin
+```{r}
+#Put the 3dMD and Vectra average image together into an array
+b.mqn.replicate.centroid <- abind(md.mqn.replicate.centroid, v.mqn.replicate.centroid, along = 3)
+
+#Assign names so that we know set of coordinates came from which camera
+dimnames(b.mqn.replicate.centroid)[[3]] <- c("3dMD", "Vectra")
+
+#GPA align 
+b.mqn.replicate.centroid.gpa <- ProcGPA(b.mqn.replicate.centroid, scale = FALSE, reflection = FALSE)
+
+#Pull out the aligned coordinates into a 3d array
+b.mqn.replicate.centroid.aligned <- b.mqn.replicate.centroid.gpa$rotated
+
+#Remove clutter
+rm(b.mqn.replicate.centroid.gpa)
+```
+
+## Euclidean distance
+### 35 ind
+Calculate the euclidean distance between the aligned coordinates from each camera
+```{r}
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with two items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(b.35ind.replicate.centroid.aligned)[[3]]))
+
+#Empty matrix to store the euclidean distances
+b.35ind.camerror.euclid <- matrix(nrow = 35, ncol = 7160)
+
+#For each of the 35 people, calculate the euclidean distance between their 3dMD and Vectra coordinates and place into matrix
+for (i in 1:length(ind.index)){
+  b.35ind.camerror.euclid[i,] <- diag(dist(b.35ind.replicate.centroid.aligned[,,ind.index[[i]][1]], b.35ind.replicate.centroid.aligned[,,ind.index[[i]][2]], method = "euclidean"))
+}
+
+#Convert result matrix to dataframe
+b.35ind.camerror.euclid <- as.data.frame(b.35ind.camerror.euclid)
+
+#Create a Individual column for grouping
+b.35ind.camerror.euclid$Individual <- unique(unlist(strsplit(dimnames(b.35ind.replicate.centroid.aligned)[[3]], split = c(".MD", ".V"))))
+
+#Remove clutter
+rm(ind, ind.index, i)
+```
+
+Plot per person
+```{r}
+#Reorder the factor levels by number
+b.35ind.camerror.euclid$Individual <- factor(b.35ind.camerror.euclid$Individual, levels = c(paste0("P", 1:35)))
+
+#Plot
+p <- ggplot(melt(b.35ind.camerror.euclid, id.vars = "Individual"), aes(x = Individual, y = value))+geom_boxplot(outlier.size = 0.25, fill = "#70B77E")+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")+labs(x="Individual", y="Euclidean distance (mm)")
+
+p
+
+#ggsave(filename = "ManuscriptFiguresAndTables/b.35ind.camerror.euclid.pdf", plot = p, device = "pdf", width = 6.5, height = 6, units = "in")
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = colMeans(subset(b.35ind.camerror.euclid, select=-Individual)))
+```
+Write table for matlab plotting
+```{r}
+write.table(colMeans(subset(b.35ind.camerror.euclid, select=-Individual)), "ManuscriptFiguresAndTables/Figure3_35ind_CameraError/b.35ind.camerror.euclid.mean.txt", col.names = F, row.names = F, quote = F, sep = "\t")
+```
+
+### Mannequin
+```{r}
+#Calculate the euclidean distance 
+b.mqn.camerror.euclid <- diag(dist(b.mqn.replicate.centroid.aligned[,,1], b.mqn.replicate.centroid.aligned[,,2], method = "euclidean"))
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = b.mqn.camerror.euclid)
+
+#Write table for MatLab figures
+#write.table(b.mqn.camerror.euclid, "C:/Users/Julie White/Box/PSU_KU_Collaboration/Vectra_vs_3dMD/ManuscriptFiguresAndTables/FigureS8_Mannequin_CameraError/b.mqn.camerror.euclid.face.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+## Normal displacement, Curvature, and Distance stats
+Far too complicated to try and figure out how to re-write Peter's normal displacement functions for R, so going to export the average 3dMD and Vectra images for each person and for the mannequin to obj and then calculate normal displacement in Matlab. 
+
+### Write PLY files for Matlab
+#### 35 ind
+Ply information same for all files
+```{r}
+Ply.Header <- "ply\nformat ascii 1.0\nelement vertex 7160\nproperty float x\nproperty float y\nproperty float z\nelement face 14050\nproperty list uchar int vertex_index\nend_header"
+
+Faces <- cbind(matrix(3, nrow = 14050, ncol = 1), RefScan_Facets)
+```
+
+For each person, export a ply file with their 3d image information
+```{r}
+#Create a list of filenames with the folder and name where we want the ply file stored, in the same order as the data are in the aligned array.
+filenames <- paste0("CameraError_NormalDispCurvArea/", dimnames(b.35ind.replicate.centroid.aligned)[[3]], ".ply")
+
+for (i in 1:length(filenames)){
+  Vertices <- b.35ind.replicate.centroid.aligned[,,i]
+  writeLines(Ply.Header, filenames[i])
+  write.table(Vertices, filenames[i], sep = " ", col.names = F, row.names = F, quote = F, append = T)
+  write.table(Faces, filenames[i], sep = " ", col.names = F, row.names = F, quote = F, append = T)
+}
+```
+
+#### Mannequin
+There are only two images, so we can do this individually
+```{r}
+#Mannequin.3dMD
+writeLines(Ply.Header, "CameraError_NormalDispCurvArea/Mqn.MD.Powder.ply")
+write.table(b.mqn.replicate.centroid.aligned[,,1], "CameraError_NormalDispCurvArea/Mqn.MD.Powder.ply", sep = " ", col.names = F, row.names = F, quote = F, append = T)
+write.table(Faces, "CameraError_NormalDispCurvArea/Mqn.MD.Powder.ply", sep = " ", col.names = F, row.names = F, quote = F, append = T)
+  
+#Mannequin.Vectra
+writeLines(Ply.Header, "CameraError_NormalDispCurvArea/Mqn.V.Powder.ply")
+write.table(b.mqn.replicate.centroid.aligned[,,2], "CameraError_NormalDispCurvArea/Mqn.V.Powder.ply", sep = " ", col.names = F, row.names = F, quote = F, append = T)
+write.table(Faces, "CameraError_NormalDispCurvArea/Mqn.V.Powder.ply", sep = " ", col.names = F, row.names = F, quote = F, append = T)
+```
+
+### Read in the statistics for each person, average, and plot
+```{r}
+#List of files to be read in
+files <- paste0("CameraError_NormalDispCurvArea/", paste0("P", 1:35), "_3dMDvsVectraStats.txt")
+
+#Create an empty 3d matrix where we'll store the full distance information
+b.35ind.camerror.diststats <- array(NA, c(7160, 12, 35))
+
+#Read in files
+for (i in 1:length(files)){
+  b.35ind.camerror.diststats[,,i] <- as.matrix(read.table(files[i], header = T, sep = ",", colClasses = "numeric"))
+}
+
+tmp <- read.table(files[i], header = T, sep = ",", colClasses = "numeric")
+
+#Add dimnames
+dimnames(b.35ind.camerror.diststats)[[2]] <- colnames(tmp)
+dimnames(b.35ind.camerror.diststats)[[3]] <- paste0("P", 1:35)
+
+#Remove clutter
+rm(files, i, tmp)
+
+#Write average for plotting in matlab
+write.table(rowMeans(b.35ind.camerror.diststats[,"NormalDistances",]), "ManuscriptFiguresAndTables/Figure3_35ind_CameraError/b.35ind.camerror.normdist.avg.txt", row.names = F, col.names = F, quote = F, sep = "\t")
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = rowMeans(b.35ind.camerror.diststats[,"NormalDistances",]), title = "Normal displacement from 3dMD to Vectra\n Red: Vectra front, Blue = 3dMD front")
+```
+
+Plot on a face
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = rowMeans(b.35ind.camerror.diststats[,"signedCurvatureDiff",]), title = "Curvature difference from 3dMD to Vectra\nBlue: decreased convexity; Red: increased convexity")
+```
+
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = rowMeans(b.35ind.camerror.diststats[,"AreaRatios",]), title = "Area difference from 3dMD to Vectra\nBlue: decreased; Red: increased")
+```
+
+### Mannequin stats
+```{r}
+b.mqn.camerror.diststats <- read.table("CameraError_NormalDispCurvArea/Mqn_Powder_3dMDvsVectraStats.txt", header = T, sep = ",", colClasses = "numeric")
+
+#Plot
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = b.mqn.camerror.diststats$NormalDistances, title = "Normal displacement from 3dMD to Vectra\n Red: Vectra front, Blue: 3dMD front")
+```
+
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = b.mqn.camerror.diststats$signedCurvatureDiff, title = "Curvature difference from 3dMD to Vectra\nBlue: decreased convexity; Red: increased convexity")
+```
+
+```{r}
+Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = b.mqn.camerror.diststats$AreaRatios, title = "Area difference from 3dMD to Vectra\nBlue: decreased; Red: increased")
+```
+
+# Dense landmark ANOVA
+## 35 ind full model
+```{r}
+#Put the 3dMD and Vectra images together in a single array
+b.35ind.array <- abind(md.35ind.array, v.35ind.array, along = 3)
+
+#Name the items
+dimnames(b.35ind.array)[[3]] <- c(paste0("MD.", dimnames(md.35ind.array)[[3]]), paste0("V.", dimnames(v.35ind.array)[[3]]))
+
+#GPA align
+b.35ind.gpa <- ProcGPA(b.35ind.array, scale = FALSE, reflection = FALSE)
+
+#Get info from the dimnames
+info <- unlist(strsplit(dimnames(b.35ind.array)[[3]], split = "\\."))
+
+#Camera
+Camera <- c(rep("MD", times = dim(md.35ind.array)[3]), rep("V", times = dim(v.35ind.array)[3]))
+
+#Individual
+Individual <- info[grep("P", info)]
+
+#Replicate
+Replicate <- info[grep("R[1-3]", info)]
+
+#Mapping
+Mapping <- info[grep("M[1-3]", info)]
+
+#Bind together into dataframe
+b.35ind.covar <- as.data.frame(cbind(Camera, Individual, Replicate, Mapping))
+rm(Camera, Individual, Replicate, Mapping, info)
+
+#Create rrpp data frame
+b.35ind.rrpp <- rrpp.data.frame(coords = two.d.array(b.35ind.gpa$rotated), Camera = b.35ind.covar$Camera, Individual = b.35ind.covar$Individual, Replicate = b.35ind.covar$Replicate)
+```
+
+Nested RCBD design ANOVA
+```{r}
+b.35ind.rrpp.II <- lm.rrpp(coords ~ Camera+Individual+Camera:Individual+Camera:Individual:Replicate, data = b.35ind.rrpp, print.progress = FALSE, iter = 99, SS.type = "II")
+
+#Treat individual and replicate as random effects
+anova(b.35ind.rrpp.II, error = c("Camera:Individual", "Camera:Individual", "Camera:Individual:Replicate", "Residuals"))
+```
+
+Using Type III SS because the interaction between Camera:Individual is significant
+```{r}
+b.35ind.rrpp.III <- lm.rrpp(coords ~ Camera+Individual+Camera:Individual+Camera:Individual:Replicate, data = b.35ind.rrpp, print.progress = FALSE, iter = 99, SS.type = "III")
+
+#Treat individual and replicate as random effects
+anova(b.35ind.rrpp.III, error = c("Camera:Individual", "Camera:Individual", "Camera:Individual:Replicate", "Residuals"))
+```
+
+## Mqn full model
+```{r}
+#Put the 3dMD and Vectra images together in a single array
+b.mqn.array <- abind(md.mqn.array, v.mqn.array, along = 3)
+
+#Name the items
+dimnames(b.mqn.array)[[3]] <- c(paste0("MD.", dimnames(md.mqn.array)[[3]]), paste0("V.", dimnames(v.mqn.array)[[3]]))
+
+#GPA align
+b.mqn.gpa <- ProcGPA(b.mqn.array, scale = FALSE, reflection = FALSE)
+
+#Get info from the dimnames
+info <- unlist(strsplit(dimnames(b.mqn.array)[[3]], split = "\\."))
+
+#Camera
+Camera <- c(rep("MD", times = dim(md.mqn.array)[3]), rep("V", times = dim(v.mqn.array)[3]))
+
+#Replicate
+Replicate <- info[grep("R[1-3]", info)]
+#Actually, we don't want the replicates to be grouped together (i.e. R1.Vectra and R1.3dMD) so going to give them unique names
+Replicate <- rep(c("R1", "R2", "R3", "R4", "R5", "R6"), each = 3)
+
+#Bind together into dataframe
+b.mqn.covar <- as.data.frame(cbind(Camera, Replicate))
+rm(Camera, Replicate, info)
+
+#Create rrpp data frame
+b.mqn.rrpp <- rrpp.data.frame(coords = two.d.array(b.mqn.gpa$rotated), Camera = b.mqn.covar$Camera, Replicate = b.mqn.covar$Replicate)
+```
+
+Mixed model nested anova 
+```{r}
+b.mqn.rrpp.III <- lm.rrpp(coords ~ Camera*Replicate, data = b.mqn.rrpp, print.progress = FALSE, iter = 99, SS.type = "III")
+
+#Replicate is random effect
+anova(b.mqn.rrpp.III, error = c("Residuals", "Residuals"))
+```
+
+# Sparse landmarks
+## Gather sparse landmark data
+### 3dMD
+Read in the  19 landmark data
+```{r}
+md.35ind.sparse <- readMat("XYZ_35ind_3DMD_19LM.mat")
+md.35ind.sparse <- md.35ind.sparse[[1]]
+
+#Dimensions: 
+#x = 35 (individuals)
+#y = 57 (19 * 3 landmarks)
+#z = 3 (replicates)
+
+dimnames(md.35ind.sparse)[[1]] <- paste0("P", 1:35)
+dimnames(md.35ind.sparse)[[2]] <- paste0(rep(c("x", "y", "z")), rep(1:19, each=3))
+dimnames(md.35ind.sparse)[[3]] <- c("R1", "R2", "R3")
+```
+
+Convert to geomorph format:
+x = number of landmarks (19)
+y = axes (3)
+z = individuals (105)
+```{r}
+#First convert to 2d matrix that we can use array specs
+#First replicate
+r1 = md.35ind.sparse[,,1]
+rownames(r1) <- paste0(rownames(r1), ".R1")
+
+#Second replicate
+r2 = md.35ind.sparse[,,2]
+rownames(r2) <- paste0(rownames(r2), ".R2")
+
+#Third replicate
+r3 = md.35ind.sparse[,,3]
+rownames(r3) <- paste0(rownames(r3), ".R3")
+
+#bind back together
+md.35ind.sparse2d <- rbind(r1, r2, r3)
+
+#Convert to geomorph
+md.35ind.sparse.geomorph <- arrayspecs(md.35ind.sparse2d, p=19, k=3, sep="")
+
+#Remove clutter
+rm(md.35ind.sparse, md.35ind.sparse2d, r1, r2, r3)
+```
+
+### Vectra
+Read in the  19 landmark data
+```{r}
+v.35ind.sparse <- readMat("XYZ_35ind_Vectra_19LM.mat")
+v.35ind.sparse <- v.35ind.sparse[[1]]
+
+#Dimensions: 
+#x = 35 (individuals)
+#y = 57 (19 * 3 landmarks)
+#z = 3 (replicates)
+
+dimnames(v.35ind.sparse)[[1]] <- paste0("P", 1:35)
+dimnames(v.35ind.sparse)[[2]] <- paste0(rep(c("x", "y", "z")), rep(1:19, each=3))
+dimnames(v.35ind.sparse)[[3]] <- c("R1", "R2", "R3")
+```
+
+Convert to geomorph format:
+x = number of landmarks (19)
+y = axes (3)
+z = individuals (105)
+```{r}
+#First convert to 2d matrix that we can use array specs
+#First replicate
+r1 = v.35ind.sparse[,,1]
+rownames(r1) <- paste0(rownames(r1), ".R1")
+
+#Second replicate
+r2 = v.35ind.sparse[,,2]
+rownames(r2) <- paste0(rownames(r2), ".R2")
+
+#Third replicate
+r3 = v.35ind.sparse[,,3]
+rownames(r3) <- paste0(rownames(r3), ".R3")
+
+#bind back together
+v.35ind.sparse2d <- rbind(r1, r2, r3)
+
+#Convert to geomorph
+v.35ind.sparse.geomorph <- arrayspecs(v.35ind.sparse2d, p=19, k=3, sep="")
+
+#Remove clutter
+rm(v.35ind.sparse, v.35ind.sparse2d, r1, r2, r3)
+```
+
+## Within-camera "biological" error
+### Align the three replicates
+#### 3dMD
+```{r}
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with three items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(md.35ind.sparse.geomorph)[[3]]))
+
+#3d array to store the GPA aligned coordinates
+md.35ind.sparse.aligned <- NULL
+
+#3d array to store the mshape, which is the centroid of the three replicates
+md.35ind.sparse.aligned.centroid <- NULL
+
+#List to store the names so we dont get lost
+namelist <- NULL
+
+#For each item in ind.index, pull out the three replicates for each image and convert to a 3d array. 
+for (i in 1:length(ind.index)){
+  #Pull out the three matrices that correspond to a single person
+  tmp <- md.35ind.sparse.geomorph[,,ind.index[[i]]]
+  #GPA align without scaling or reflecting
+  tmp.gpa <- ProcGPA(tmp, scale = FALSE, reflection = FALSE)
+  #Pull out the aligned coordinates and place them to a 3d array
+  md.35ind.sparse.aligned <- abind(md.35ind.sparse.aligned, tmp.gpa$rotated, along = 3)
+  #Pull out the dimnames and add them to a list of names
+  namelist <- append(namelist, dimnames(tmp.gpa$rotated)[[3]])
+  #Pull out the mean shape of the three replicate images and put into 3d array 
+  md.35ind.sparse.aligned.centroid <- abind(md.35ind.sparse.aligned.centroid, tmp.gpa$mshape, along = 3)
+}
+
+#Assign names to the centroid of the replicates, using a pared down version of the namelist. The names in this list are in the same order as the data because they were constructed together. 
+dimnames(md.35ind.sparse.aligned.centroid)[[3]] <- unique(unlist(strsplit(namelist, split = ".R[0-3]")))
+
+#Remove the clutter
+rm(ind, ind.index, namelist, tmp, tmp.gpa, i)
+```
+
+#### Vectra
+```{r}
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with three items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(v.35ind.sparse.geomorph)[[3]]))
+
+#3d array to store the GPA aligned coordinates
+v.35ind.sparse.aligned <- NULL
+
+#3d array to store the mshape, which is the centroid of the three replicates
+v.35ind.sparse.aligned.centroid <- NULL
+
+#List to store the names so we dont get lost
+namelist <- NULL
+
+#For each item in ind.index, pull out the three replicates for each image and convert to a 3d array. 
+for (i in 1:length(ind.index)){
+  #Pull out the three matrices that correspond to a single person
+  tmp <- v.35ind.sparse.geomorph[,,ind.index[[i]]]
+  #GPA align without scaling or reflecting
+  tmp.gpa <- ProcGPA(tmp, scale = FALSE, reflection = FALSE)
+  #Pull out the aligned coordinates and place them to a 3d array
+  v.35ind.sparse.aligned <- abind(v.35ind.sparse.aligned, tmp.gpa$rotated, along = 3)
+  #Pull out the dimnames and add them to a list of names
+  namelist <- append(namelist, dimnames(tmp.gpa$rotated)[[3]])
+  #Pull out the mean shape of the three replicate images and put into 3d array 
+  v.35ind.sparse.aligned.centroid <- abind(v.35ind.sparse.aligned.centroid, tmp.gpa$mshape, along = 3)
+}
+
+#Assign names to the centroid of the replicates, using a pared down version of the namelist. The names in this list are in the same order as the data because they were constructed together. 
+dimnames(v.35ind.sparse.aligned.centroid)[[3]] <- unique(unlist(strsplit(namelist, split = ".R[0-3]")))
+
+#Remove the clutter
+rm(ind, ind.index, namelist, tmp, tmp.gpa, i)
+```
+
+### Euclidean distance between replicates and centroid
+#### 3dMD
+Calculate the euclidean distance between R1, R2, R3 and Replicate.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+md.35ind.sparse.bioerror.euclid <- matrix(nrow=105, ncol=19)
+
+#Create an index with numbers we'll need to extract the list elements
+indx <- seq(1,105,3)
+
+#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#
+  md.35ind.sparse.bioerror.euclid[indx[i],] <- diag(dist(md.35ind.sparse.aligned.centroid[,,i], md.35ind.sparse.aligned[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R2 and P#
+  md.35ind.sparse.bioerror.euclid[indx[i]+1,] <- diag(dist(md.35ind.sparse.aligned.centroid[,,i], md.35ind.sparse.aligned[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R3 and P#
+  md.35ind.sparse.bioerror.euclid[indx[i]+2,] <- diag(dist(md.35ind.sparse.aligned.centroid[,,i], md.35ind.sparse.aligned[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+md.35ind.sparse.bioerror.euclid <- as.data.frame(md.35ind.sparse.bioerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(md.35ind.sparse.aligned)[[3]], split = "\\."))
+md.35ind.sparse.bioerror.euclid$Individual <- names[grep(pattern="P", x=names)]
+md.35ind.sparse.bioerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+md.35ind.sparse.bioerror.euclid.mean <- md.35ind.sparse.bioerror.euclid %>%
+  group_by(Individual) %>%
+  dplyr::select(-Replicate) %>%
+  summarise_all(.funs = mean)
+```
+
+#### Vectra
+Calculate the euclidean distance between R1, R2, R3 and Replicate.Centroid
+```{r}
+#Create a matrix to store the euclidean distances
+v.35ind.sparse.bioerror.euclid <- matrix(nrow=105, ncol=19)
+
+#Create an index with numbers we'll need to extract the list elements
+indx <- seq(1,105,3)
+
+#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
+for (i in 1:length(indx)){
+  #Distance between P#.R1 and P#
+  v.35ind.sparse.bioerror.euclid[indx[i],] <- diag(dist(v.35ind.sparse.aligned.centroid[,,i], v.35ind.sparse.aligned[,,indx[i]], method = "euclidean"))
+  
+  #Distance between P#.R2 and P#
+  v.35ind.sparse.bioerror.euclid[indx[i]+1,] <- diag(dist(v.35ind.sparse.aligned.centroid[,,i], v.35ind.sparse.aligned[,,indx[i]+1], method = "euclidean"))
+  
+  #Distance between P#.R3 and P#
+  v.35ind.sparse.bioerror.euclid[indx[i]+2,] <- diag(dist(v.35ind.sparse.aligned.centroid[,,i], v.35ind.sparse.aligned[,,indx[i]+2], method = "euclidean"))
+}
+
+#Convert the euclidean distances to a dataframe
+v.35ind.sparse.bioerror.euclid <- as.data.frame(v.35ind.sparse.bioerror.euclid)
+
+#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
+names <- unlist(strsplit(dimnames(v.35ind.sparse.aligned)[[3]], split = "\\."))
+v.35ind.sparse.bioerror.euclid$Individual <- names[grep(pattern="P", x=names)]
+v.35ind.sparse.bioerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
+
+#Remove clutter
+rm(indx, i, names)
+```
+
+Calculate the average euclidean distance per replicate
+```{r}
+v.35ind.sparse.bioerror.euclid.mean <- v.35ind.sparse.bioerror.euclid %>%
+  group_by(Individual) %>%
+  dplyr::select(-Replicate) %>%
+  summarise_all(.funs = mean)
+```
+
+#### Compare 3dMD and Vectra
+```{r}
+#Stack the two dataframes of sd statistics on top of each other
+b.35ind.sparse.bioerror.euclid.mean <- rbind(md.35ind.sparse.bioerror.euclid.mean, v.35ind.sparse.bioerror.euclid.mean)
+
+#Reorder the factor levels by number
+b.35ind.sparse.bioerror.euclid.mean$Individual <- factor(b.35ind.sparse.bioerror.euclid.mean$Individual, levels = c(paste0("P", 1:35)))
+
+#Add a column telling which camera each came from
+b.35ind.sparse.bioerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.35ind.sparse.bioerror.euclid.mean)), rep("Vectra", times = nrow(v.35ind.sparse.bioerror.euclid.mean)))
+
+#Plot with outliers
+p<-ggplot(melt(b.35ind.sparse.bioerror.euclid.mean, id.vars = c("Individual", "Camera")), aes(x = Individual, y=value, fill=Camera))+geom_boxplot(outlier.size = 0.25)+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+ylab("Euclidean distance (mm)")+scale_fill_manual(values = c("#0D646B", "#C75E24"))
+
+ggsave(filename = "ManuscriptFiguresAndTables/b.35ind.sparse.bioerror.euclid.pdf", plot = p, device = "pdf", width = 6, height = 4, units = "in")
+
+p
+```
+
+Wilcoxon test for comparison of means per image
+```{r}
+b.35ind.sparse.bioerror.euclid.mean.wilcox <- compare_means(data = melt(b.35ind.sparse.bioerror.euclid.mean, id.vars = c("Individual", "Camera")), formula = value ~ Camera, group.by = "Individual", paired = TRUE)
+
+write.table(b.35ind.sparse.bioerror.euclid.mean.wilcox, file =  "ManuscriptFiguresAndTables/b.35ind.sparse.bioerror.euclid.mean.wilcox.txt", row.names = F, col.names = T, sep = "\t", quote = F)
+```
+
+Plot per camera instead of per person, and perform Wilcoxon test on mean comparison
+```{r}
+tmp <- b.35ind.sparse.bioerror.euclid.mean %>% 
+  group_by(Individual, Camera) %>%
+  ungroup() %>%
+  mutate(Avg = rowMeans(.[,-c(which(colnames(b.35ind.sparse.bioerror.euclid.mean) %in% c("Individual", "Camera")))])) %>%
+  dplyr::select(Individual, Camera, Avg)
+  
+p <- ggplot(melt(tmp, id.vars = c("Individual", "Camera")), aes(x = Camera, y=value, fill = Camera))+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Individual), colour = "black", alpha = 0.25)+geom_boxplot(outlier.shape = NA, alpha = 0.75, coef = 0)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())+stat_compare_means(method = "wilcox.test", paired = TRUE, label.x = 2)
+
+ggsave(filename = "ManuscriptFiguresAndTables/b.35ind.sparse.bioerror.euclid.per.camera.pdf", plot = p, device = "pdf", width = 6, height = 4, units = "in")
+
+p
+```
+
+## Camera error
+### Align the two images per person
+```{r}
+#Combine the replicate centroid arrays into a single array
+b.35ind.sparse.replicate.centroid <- abind(md.35ind.sparse.aligned.centroid, v.35ind.sparse.aligned.centroid, along = 3)
+
+#Alter the dimnames so that we know which camera each individual came from 
+dimnames(b.35ind.sparse.replicate.centroid)[[3]] <- paste(dimnames(b.35ind.sparse.replicate.centroid)[[3]], rep(c("MD", "V"), each = 35), sep = ".")
+
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with two items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(b.35ind.sparse.replicate.centroid)[[3]]))
+
+#3d array to store the GPA aligned coordinates
+b.35ind.sparse.replicate.centroid.aligned <- NULL
+
+#For each item in ind.index, pull out the two images ang align
+for (i in 1:length(ind.index)){
+  #Pull out the two matrices that correspond to a single person
+  tmp <- b.35ind.sparse.replicate.centroid[,,ind.index[[i]]]
+  #GPA align without scaling or reflecting
+  tmp.gpa <- ProcGPA(tmp, scale = FALSE, reflection = FALSE)
+  #Pull out the aligned coordinates and place them to a 3d array
+  b.35ind.sparse.replicate.centroid.aligned <- abind(b.35ind.sparse.replicate.centroid.aligned, tmp.gpa$rotated, along = 3)
+}
+
+#Remove the clutter
+rm(ind, ind.index, tmp, tmp.gpa, i)
+```
+
+### Euclidean distance
+Calculate the euclidean distance between the aligned coordinates from each camera
+```{r}
+#Make a list containing the indices for each indiviudal. Should be a list of 35 with two items each. 
+ind <- paste0("P", 1:35, "\\.")
+ind.index <- lapply(ind, function(x) grep(x, dimnames(b.35ind.sparse.replicate.centroid.aligned)[[3]]))
+
+#Empty matrix to store the euclidean distances
+b.35ind.sparse.camerror.euclid <- matrix(nrow = 35, ncol = 19)
+
+#For each of the 35 people, calculate the euclidean distance between their 3dMD and Vectra coordinates and place into matrix
+for (i in 1:length(ind.index)){
+  b.35ind.sparse.camerror.euclid[i,] <- diag(dist(b.35ind.sparse.replicate.centroid.aligned[,,ind.index[[i]][1]], b.35ind.sparse.replicate.centroid.aligned[,,ind.index[[i]][2]], method = "euclidean"))
+}
+
+#Convert result matrix to dataframe
+b.35ind.sparse.camerror.euclid <- as.data.frame(b.35ind.sparse.camerror.euclid)
+
+#Create a Individual column for grouping
+b.35ind.sparse.camerror.euclid$Individual <- unique(unlist(strsplit(dimnames(b.35ind.sparse.replicate.centroid.aligned)[[3]], split = c(".MD", ".V"))))
+
+#Remove clutter
+rm(ind, ind.index, i)
+```
+
+Plot per person
+```{r}
+#Reorder the factor levels by number
+b.35ind.sparse.camerror.euclid$Individual <- factor(b.35ind.sparse.camerror.euclid$Individual, levels = c(paste0("P", 1:35)))
+
+#Plot
+p <- ggplot(melt(b.35ind.sparse.camerror.euclid, id.vars = "Individual"), aes(x = Individual, y = value))+geom_boxplot(fill = "#70B77E", outlier.size = 0.25)+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5), legend.position = "none")+labs(x="Individual", y="Euclidean distance (mm)")
+
+ggsave(filename = "ManuscriptFiguresAndTables/b.35ind.sparse.camerror.euclid.pdf", plot = p, device = "pdf", width = 3.25, height = 4.5, units = "in")
+
+p
+```
+
+Plot per landmark
+```{r}
+lmk <- data.frame(c(1:19), c("Glabella", "Nasion", "Pronasale", "Subnasale", "Labiale superius", "Labiale inferius", "Pogonion", "Endocanthion left", "Endocanthion right", "Exocanthion left", "Exocanthion right", "Alar curvature left", "Alar curvature right", "Subalare left", "Subalare right", "Crista philtri left", "crista philtri right", "Cheilion left", "Cheilion right"))
+colnames(lmk) <- c("LM.Num", "LM.Name")
+
+b.35ind.sparse.camerror.euclid.perlmk <- as.data.frame(b.35ind.sparse.camerror.euclid[-20])
+
+colnames(b.35ind.sparse.camerror.euclid.perlmk) <- lmk$LM.Name
+
+p<-ggplot(melt(b.35ind.sparse.camerror.euclid.perlmk), aes(x = variable, y = value))+geom_boxplot(color = "#70B77E", outlier.colour = "black", outlier.size = 0.25)+theme_bw(base_size = 8)+theme(legend.position = "none", axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 8))+labs(x="Landmark", y="Euclidean distance (mm)")
+
+ggsave(filename = "ManuscriptFiguresAndTables/b.35ind.sparse.camerror.euclid.perlmk.pdf", plot = p, device = "pdf", width = 3.25, height = 4.5, units = "in")
+
+p
+```
+### ANOVA
+```{r}
+#Put the 3dMD and Vectra images together in a single array
+b.35ind.sparse.array <- abind(md.35ind.sparse.geomorph, v.35ind.sparse.geomorph, along = 3)
+
+#Name the items
+dimnames(b.35ind.sparse.array)[[3]] <- c(paste0("MD.", dimnames(md.35ind.sparse.geomorph)[[3]]), paste0("V.", dimnames(v.35ind.sparse.geomorph)[[3]]))
+
+#GPA align
+b.35ind.sparse.gpa <- ProcGPA(b.35ind.sparse.array, scale = FALSE, reflection = FALSE)
+
+#Get info from the dimnames
+info <- unlist(strsplit(dimnames(b.35ind.sparse.array)[[3]], split = "\\."))
+
+#Camera
+Camera <- c(rep("MD", times = dim(md.35ind.sparse.geomorph)[3]), rep("V", times = dim(v.35ind.sparse.geomorph)[3]))
+
+#Individual
+Individual <- info[grep("P", info)]
+
+#Replicate
+Replicate <- info[grep("R[1-3]", info)]
+
+#Bind together into dataframe
+b.35ind.sparse.covar <- as.data.frame(cbind(Camera, Individual, Replicate))
+rm(Camera, Individual, Replicate, info)
+
+#Create rrpp data frame
+b.35ind.sparse.rrpp <- rrpp.data.frame(coords = two.d.array(b.35ind.sparse.gpa$rotated), Camera = b.35ind.sparse.covar$Camera, Individual = b.35ind.sparse.covar$Individual, Replicate = b.35ind.sparse.covar$Replicate)
+```
+
+RCBD model with subsampling
+```{r}
+b.35ind.sparse.rrpp.III <- lm.rrpp(coords ~ Camera*Individual, data = b.35ind.sparse.rrpp, print.progress = FALSE, iter = 99, SS.type = "III")
+```
+
+Treating Individual as random effects (better)
+```{r}
+anova(b.35ind.sparse.rrpp.III, error = c("Camera:Individual", "Camera:Individual", "Residuals"))
+```
+
+## Nested proportional area chart
+```{r}
+#Data: 
+#MeshMonk reg error 3dMD:
+#MeshMonk reg error Vectra: 
+#Camera technical error 3dMD:
+#Camera technical error Vectra: 
+#Biological error 3dMD:
+#Biological error Vectra: 
+#Camera error total: 
+
+bubblechart <- as.data.frame(matrix(NA, nrow=7, ncol=4))
+colnames(bubblechart) <- c("x", "y", "Area", "Color")
+
+bubblechart$x <- c(-1, 1, -1, 1, -1, 1, 0)
+bubblechart$y <- c(-1, -1, 0, 0, 1, 1, 0)
+bubblechart$Color <- c("3dMD", "Vectra", "3dMD", "Vectra", "3dMD", "Vectra", "Both")
+
+bubblechart[1,"Area"] <- mean(colMeans(subset(md.35ind.regerror.euclid.mean, select=-c(Individual,Replicate))))
+
+bubblechart[2,"Area"] <- mean(colMeans(subset(v.35ind.regerror.euclid.mean, select=-c(Individual,Replicate))))
+
+bubblechart[3, "Area"] <- mean(colMeans(subset(md.mqn.bioerror.euclid, select=-Replicate)))
+
+bubblechart[4, "Area"] <- mean(colMeans(subset(v.mqn.bioerror.euclid, select=-Replicate)))
+
+bubblechart[5, "Area"] <- mean(colMeans(subset(md.35ind.bioerror.euclid.mean, select=-Individual)))
+
+bubblechart[6, "Area"] <- mean(colMeans(subset(v.35ind.bioerror.euclid.mean, select=-Individual)))
+
+bubblechart[7, "Area"] <- mean(colMeans(subset(b.35ind.camerror.euclid, select=-Individual)))
+
+bubblechart$AreaScaled <- bubblechart$Area*100
+```
+
+```{r}
+ggplot(bubblechart, aes(x = x, y = y)) + 
+  geom_point(aes(color = Color, size = AreaScaled)) +
+  scale_color_manual(values = c("#00AFBB", "#E7B800", "#FC4E07")) +
+  xlim(-1.5,1.5) +
+  ylim(-1.5, 1.5) +
+  scale_size(range = c(1,10)) +
+  theme(legend.position = "top")
+```
+
