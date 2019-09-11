@@ -1,21 +1,21 @@
 #Ignore conference material
-/AAPA2019
+/AAPA2019/*
 
-#Ignore ANOVA analysis (for now)
-/Alejandra_Analysis
+#Ignore unused analyses and archived code 
+Analysis/ArchivedCode/*
+Analysis/CameraError_NormalDispCurvArea/*
+Analysis/EDMA/*
 
-#Ignore raw images, which can't be shared online per the IRB.
-/ImagesAndRegistration
-
-#Ignore the raw dense shape coordinates, which can't be shared online per the IRB
-XYZ_35ind_3DMD_7160LM.txt
-XYZ_35ind_Vectra_7160LM.txt
-All.35ind.7160LM.mat
-All.Mqn.7160LM.mat
+#Ignore raw materials, which can't be shared online per the IRB.
+Analysis/RawImageData/*
+Analysis/.Rproj.user/*
+Analysis/.RData
+Analysis/.Rhistory
+Analysis/VectraVs3dMD.nb.html
 
 #Ignore Tom's script, which can be found on his own GitHub account
-Plot1Face.R
-Plot1Face_Tutorial.Rmd
+Analysis/Plot1Face.R
+Analysis/Plot1Face_Tutorial.Rmd
 
-#Ignore RData, since it could be used to recreate the raw images
-.RData
+#Ignore manuscript material until acceptance
+/Manuscript/*
