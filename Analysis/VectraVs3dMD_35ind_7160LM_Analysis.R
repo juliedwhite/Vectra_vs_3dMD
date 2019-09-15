@@ -3,7 +3,7 @@
 
 #We are restricted in sharing the dense-landmark coordinates or raw image files for the 35 participants, so this code is just for reference. 
 
-#Necessary packages
+##### Necessary packages and functions #####
 library(tidyverse)
 library(reshape2)
 library(RRPP)
@@ -27,9 +27,10 @@ RefScan_Vertices <- as.matrix(RefScan[which(RefScan$V1 == "v"), 2:4])
 #Remove RefScan since we don't need it anymore
 rm(RefScan)
 
+##### Load data #####
 #Load the dense quasi-landmarked participant data from MeshMonk
-md.35ind <- read_csv("RawImageData/XYZ_35ind_3DMD_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
-v.35ind <- read_csv("RawImageData/XYZ_35ind_Vectra_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+md.35ind <- read_csv("RawImageData/3DMD/35ind/XYZ_35ind_3DMD_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+v.35ind <- read_csv("RawImageData/Vectra/35ind/XYZ_35ind_Vectra_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
 
 #Add columns to the dataframe as grouping variables
 md.35ind$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), levels = c(paste0("P", 1:35)))
@@ -40,7 +41,7 @@ v.35ind$Individual <- factor(c(rep(paste0("P", rep(1:35, each=3)), times=3)), le
 v.35ind$Replicate <- factor(c(rep(c("R1", "R2", "R3"), length = 315)))
 v.35ind$Mapping <- factor(c(rep(c("M1", "M2", "M3"), each = 105)))
 
-#Within-camera registration error
+##### Within-camera registration error #####
 #Euclidean distance between mapping centroid and each mapping
 #3dMD
 #Calculate the centroid of each replicate image (across 3 mappings)
@@ -197,7 +198,8 @@ b.35ind.regerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.35ind.reger
 b.35ind.regerror.euclid.mean$Individual <- factor(b.35ind.regerror.euclid.mean$Individual, levels = c(paste0("P", 1:35)))
 
 #Plot with outliers
-ggplot(melt(b.35ind.regerror.euclid.mean, id.vars = c("Individual", "Replicate", "Camera")), aes(x = Individual, y=value, fill=Camera))+ylab("Euclidean distance (mm)")+geom_boxplot(outlier.size = 0.25)+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+scale_fill_manual(values = c("#0D646B", "#C75E24"))+scale_color_manual(values = c("#0D646B", "#C75E24"))
+p <- ggplot(melt(b.35ind.regerror.euclid.mean, id.vars = c("Individual", "Replicate", "Camera")), aes(x = Individual, y=value, fill=Camera))+ylab("Euclidean distance (mm)")+geom_boxplot(outlier.size = 0.25)+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+scale_fill_manual(values = c("#0D646B", "#C75E24"))+scale_color_manual(values = c("#0D646B", "#C75E24"))
+ggsave(filename = "FiguresAndTables/b.35ind.regerror.euclid.mean.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
 
 #Plot per camera instead of per person, and perform Wilcoxon test on mean comparison
 tmp <- b.35ind.regerror.euclid.mean %>% 
@@ -206,12 +208,13 @@ tmp <- b.35ind.regerror.euclid.mean %>%
   mutate(Avg = rowMeans(.[,-c(which(colnames(b.35ind.regerror.euclid.mean) %in% c("Individual", "Replicate", "Camera")))])) %>%
   dplyr::select(Individual, Replicate, Camera, Avg)
 
-ggplot(tmp, aes(x = Camera, y=Avg, fill = Camera))+geom_point(aes(x = Camera, y = Avg), size = 0.25)+geom_boxplot(outlier.alpha = 0, coef = 0, alpha = 0.75)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())+stat_compare_means(method = "wilcox.test", paired = FALSE, label.x = 2)
+p <- ggplot(tmp, aes(x = Camera, y=Avg, fill = Camera))+geom_point(aes(x = Camera, y = Avg), size = 0.25)+geom_boxplot(outlier.alpha = 0, coef = 0, alpha = 0.75)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())+stat_compare_means(method = "wilcox.test", paired = FALSE, label.x = 2)
+ggsave(filename = "FiguresAndTables/b.35ind.regerror.euclid.mean.percamera.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
 
 #Remove clutter
-rm(tmp)
+rm(tmp, p)
 
-#Within-camera "biological" error
+##### Within-camera participant error #####
 #Here we'll calculate the differences between the three different replicate images of the same person. 
 #We calculated the centroid of each replicate image by averaging together the coordinates of the three mappings already. Now we want to pull out the three replicate images for each person and GPA align those, then extract the aligned coordinates. 
 #3dMD
@@ -372,7 +375,8 @@ b.35ind.bioerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.35ind.bioer
 b.35ind.bioerror.euclid.mean$Individual <- factor(b.35ind.bioerror.euclid.mean$Individual, levels = c(paste0("P", 1:35)))
 
 #Plot with outliers
-ggplot(melt(b.35ind.bioerror.euclid.mean, id.vars = c("Individual", "Camera")), aes(x = Individual, y=value, fill=Camera))+geom_violin()+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+ylab("Euclidean distance (mm)")+scale_fill_manual(values = c("#0D646B", "#C75E24"))
+p <- ggplot(melt(b.35ind.bioerror.euclid.mean, id.vars = c("Individual", "Camera")), aes(x = Individual, y=value, fill=Camera))+geom_violin()+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+ylab("Euclidean distance (mm)")+scale_fill_manual(values = c("#0D646B", "#C75E24"))
+ggsave(filename = "FiguresAndTables/b.35ind.parerror.euclid.mean.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
 
 #Plot per camera instead of per person
 tmp <- b.35ind.bioerror.euclid.mean %>% 
@@ -381,10 +385,11 @@ tmp <- b.35ind.bioerror.euclid.mean %>%
   mutate(Avg = rowMeans(.[,-c(which(colnames(b.35ind.bioerror.euclid.mean) %in% c("Individual", "Camera")))])) %>%
   dplyr::select(Individual, Camera, Avg)
 
-ggplot(melt(tmp, id.vars = c("Individual", "Camera")), aes(x = Camera, y=value, fill = Camera))+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Individual), colour = "black", alpha = 0.25)+geom_boxplot(outlier.shape = NA, alpha = 0.75, coef = 0)+geom_boxplot(aes(color = Camera), fatten = NULL, fill = NA, coef = 0, outlier.alpha = 0)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+scale_color_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())
+p <- ggplot(melt(tmp, id.vars = c("Individual", "Camera")), aes(x = Camera, y=value, fill = Camera))+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Individual), colour = "black", alpha = 0.25)+geom_boxplot(outlier.shape = NA, alpha = 0.75, coef = 0)+geom_boxplot(aes(color = Camera), fatten = NULL, fill = NA, coef = 0, outlier.alpha = 0)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+scale_color_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())
+ggsave(filename = "FiguresAndTables/b.35ind.regerror.euclid.mean.percamera.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
 
 #Remove clutter
-rm(tmp)
+rm(tmp,p)
 
 ##### Camera error #####
 #Align the two images from each camera
@@ -526,6 +531,5 @@ b.35ind.rrpp <- rrpp.data.frame(coords = two.d.array(b.35ind.gpa$rotated), Camer
 #Using Type III SS because the interaction between Camera:Individual is significant
 b.35ind.rrpp.III <- lm.rrpp(coords ~ Camera+Individual+Camera:Individual+Camera:Individual:Replicate, data = b.35ind.rrpp, print.progress = FALSE, iter = 99, SS.type = "III")
 
-#Treat individual and replicate as random effects
-anova(b.35ind.rrpp.III, error = c("Camera:Individual", "Camera:Individual", "Camera:Individual:Replicate", "Residuals"))
-
+#Write anova output to file, treat individual and replicate as random effects
+capture.output(anova(b.35ind.rrpp.III, error = c("Camera:Individual", "Camera:Individual", "Camera:Individual:Replicate", "Residuals")), file = "FiguresAndTables/b.35ind.dense.camerror.anova.txt")

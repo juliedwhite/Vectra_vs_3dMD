@@ -26,8 +26,8 @@ RefScan_Vertices <- as.matrix(RefScan[which(RefScan$V1 == "v"), 2:4])
 rm(RefScan)
 
 ##### Load the dense quasi-landmark mannequin data from MeshMonk #####
-md.mqn <- read_csv("RawImageData/XYZ_Mqn_3DMD_7160LM_2.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
-v.mqn <- read_csv("RawImageData/XYZ_Mqn_Vectra_7160LM_2.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+md.mqn <- read_csv("RawImageData/3DMD/Mannequin_WithPowder_Mapped/XYZ_Mqn_3DMD_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
+v.mqn <- read_csv("RawImageData/Vectra/Mannequin_WithPowder_Mapped/XYZ_Mqn_Vectra_7160LM.txt", col_names = paste0(c("x", "y", "z"), rep(1:7160, each=3)), col_types = cols(.default = col_double()))
 
 #Add columns to the dataframe as grouping variables
 md.mqn$Replicate <- factor(c(rep(c("R1", "R2", "R3"), times = 3)))
@@ -189,7 +189,7 @@ b.mqn.regerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.mqn.regerror.
 
 #Plot
 p <- ggplot(melt(b.mqn.regerror.euclid.mean, id.vars = c("Replicate", "Camera")), aes(x = Replicate, y=value, fill=Camera))+scale_fill_manual(values = c("#0D646B", "#C75E24"))+geom_boxplot(outlier.size = 0.25)+theme_bw()+ylab("Euclidean distance (mm)")+theme(legend.position = "bottom")
-ggsave(filename = "FiguresAndTables/b.mqn.regerror.euclid.powder.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
+ggsave(filename = "FiguresAndTables/b.mqn.regerror.euclid.mean.pdf", plot = p, device = "pdf", width = 6, height = 6, units = "in")
 
 ##### Within-camera technological error #####
 #Here we'll calculate the differences between the three different replicate images of the mannequin. 
@@ -317,10 +317,10 @@ write.table(b.mqn.replicate.centroid.aligned[,,2], "NormalDisplacement/Mqn.V.Pow
 write.table(FacesZero, "NormalDisplacement/Mqn.V.Powder.Zero.ply", sep = " ", col.names = F, row.names = F, quote = F, append = T)
 
 #Read in information from Matlab and plot
-b.mqn.camerror.diststats <- read.table("NormalDisplacement/Mqn_Powder_3dMDvsVectraStats.txt", header = T, sep = ",", colClasses = "numeric")
+#b.mqn.camerror.diststats <- read.table("NormalDisplacement/Mqn_Powder_3dMDvsVectraStats.txt", header = T, sep = ",", colClasses = "numeric")
 
 #Plot on a face
-Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = b.mqn.camerror.diststats$NormalDistances, title = "Normal displacement from 3dMD to Vectra\n Red: Vectra front, Blue: 3dMD front")
+#Plot1Face(vertices = RefScan_Vertices, facets = RefScan_Facets, colormap = b.mqn.camerror.diststats$NormalDistances, title = "Normal displacement from 3dMD to Vectra\n Red: Vectra front, Blue: 3dMD front")
 
 ##### ANOVA #####
 #Put the 3dMD and Vectra images together in a single array
@@ -352,6 +352,6 @@ b.mqn.rrpp <- rrpp.data.frame(coords = two.d.array(b.mqn.gpa$rotated), Camera = 
 #Mixed model nested anova 
 b.mqn.rrpp.III <- lm.rrpp(coords ~ Camera*Replicate, data = b.mqn.rrpp, print.progress = FALSE, iter = 99, SS.type = "III")
 
-#Replicate is random effect
-anova(b.mqn.rrpp.III, error = c("Residuals", "Residuals"))
+#Write anova results to file, replicate is random effect
+capture.output(anova(b.mqn.rrpp.III, error = c("Residuals", "Residuals")), file = "FiguresAndTables/b.mqn.camerror.anova.txt")
 

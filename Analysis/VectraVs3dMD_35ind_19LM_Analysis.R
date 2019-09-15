@@ -1,7 +1,7 @@
 #Analysis comparing 3dMDface to Vectra H1 using participant sparse landmark data
 #Author: Julie D. White
 
-#Necessary packages
+##### Necessary packages and functions #####
 library(tidyverse)
 library(reshape2)
 library(RRPP)
@@ -26,7 +26,7 @@ RefScan_Vertices <- as.matrix(RefScan[which(RefScan$V1 == "v"), 2:4])
 rm(RefScan)
 
 ##### Read in the 19 landmark data #####
-md.35ind.sparse <- readMat("RawImageData/XYZ_35ind_3DMD_19LM.mat")
+md.35ind.sparse <- readMat("RawImageData/3DMD/XYZ_35ind_3DMD_19LM.mat")
 md.35ind.sparse <- md.35ind.sparse[[1]]
 
 #Dimensions: 
@@ -65,7 +65,7 @@ md.35ind.sparse.geomorph <- arrayspecs(md.35ind.sparse2d, p=19, k=3, sep="")
 rm(md.35ind.sparse, md.35ind.sparse2d, r1, r2, r3)
 
 #Vectra
-v.35ind.sparse <- readMat("RawImageData/XYZ_35ind_Vectra_19LM.mat")
+v.35ind.sparse <- readMat("RawImageData/Vectra/XYZ_35ind_Vectra_19LM.mat")
 v.35ind.sparse <- v.35ind.sparse[[1]]
 
 #Dimensions: 
@@ -103,8 +103,7 @@ v.35ind.sparse.geomorph <- arrayspecs(v.35ind.sparse2d, p=19, k=3, sep="")
 #Remove clutter
 rm(v.35ind.sparse, v.35ind.sparse2d, r1, r2, r3)
 
-##### Within-camera "biological" error #####
-#Align the three replicates
+##### Align and average three replicate images #####
 #3dMD
 #Make a list containing the indices for each indiviudal. Should be a list of 35 with three items each. 
 ind <- paste0("P", 1:35, "\\.")
@@ -172,106 +171,6 @@ dimnames(v.35ind.sparse.aligned.centroid)[[3]] <- unique(unlist(strsplit(namelis
 
 #Remove the clutter
 rm(ind, ind.index, namelist, tmp, tmp.gpa, i)
-
-#Euclidean distance between replicates and centroid
-#3dMD
-#Create a matrix to store the euclidean distances
-md.35ind.sparse.bioerror.euclid <- matrix(nrow=105, ncol=19)
-
-#Create an index with numbers we'll need to extract the list elements
-indx <- seq(1,105,3)
-
-#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
-for (i in 1:length(indx)){
-  #Distance between P#.R1 and P#
-  md.35ind.sparse.bioerror.euclid[indx[i],] <- diag(dist(md.35ind.sparse.aligned.centroid[,,i], md.35ind.sparse.aligned[,,indx[i]], method = "euclidean"))
-  
-  #Distance between P#.R2 and P#
-  md.35ind.sparse.bioerror.euclid[indx[i]+1,] <- diag(dist(md.35ind.sparse.aligned.centroid[,,i], md.35ind.sparse.aligned[,,indx[i]+1], method = "euclidean"))
-  
-  #Distance between P#.R3 and P#
-  md.35ind.sparse.bioerror.euclid[indx[i]+2,] <- diag(dist(md.35ind.sparse.aligned.centroid[,,i], md.35ind.sparse.aligned[,,indx[i]+2], method = "euclidean"))
-}
-
-#Convert the euclidean distances to a dataframe
-md.35ind.sparse.bioerror.euclid <- as.data.frame(md.35ind.sparse.bioerror.euclid)
-
-#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
-names <- unlist(strsplit(dimnames(md.35ind.sparse.aligned)[[3]], split = "\\."))
-md.35ind.sparse.bioerror.euclid$Individual <- names[grep(pattern="P", x=names)]
-md.35ind.sparse.bioerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
-
-#Remove clutter
-rm(indx, i, names)
-
-#Calculate the average euclidean distance per replicate
-md.35ind.sparse.bioerror.euclid.mean <- md.35ind.sparse.bioerror.euclid %>%
-  group_by(Individual) %>%
-  dplyr::select(-Replicate) %>%
-  summarise_all(.funs = mean)
-
-#Vectra
-#Create a matrix to store the euclidean distances
-v.35ind.sparse.bioerror.euclid <- matrix(nrow=105, ncol=19)
-
-#Create an index with numbers we'll need to extract the list elements
-indx <- seq(1,105,3)
-
-#Calculate the distance between the replicates and the centroid of the replicates, for each landmark
-for (i in 1:length(indx)){
-  #Distance between P#.R1 and P#
-  v.35ind.sparse.bioerror.euclid[indx[i],] <- diag(dist(v.35ind.sparse.aligned.centroid[,,i], v.35ind.sparse.aligned[,,indx[i]], method = "euclidean"))
-  
-  #Distance between P#.R2 and P#
-  v.35ind.sparse.bioerror.euclid[indx[i]+1,] <- diag(dist(v.35ind.sparse.aligned.centroid[,,i], v.35ind.sparse.aligned[,,indx[i]+1], method = "euclidean"))
-  
-  #Distance between P#.R3 and P#
-  v.35ind.sparse.bioerror.euclid[indx[i]+2,] <- diag(dist(v.35ind.sparse.aligned.centroid[,,i], v.35ind.sparse.aligned[,,indx[i]+2], method = "euclidean"))
-}
-
-#Convert the euclidean distances to a dataframe
-v.35ind.sparse.bioerror.euclid <- as.data.frame(v.35ind.sparse.bioerror.euclid)
-
-#Create a list of the naming information so that we can add it to the distance dataframe. We're relying on everything being in the same order to place these
-names <- unlist(strsplit(dimnames(v.35ind.sparse.aligned)[[3]], split = "\\."))
-v.35ind.sparse.bioerror.euclid$Individual <- names[grep(pattern="P", x=names)]
-v.35ind.sparse.bioerror.euclid$Replicate <- names[grep(pattern="R", x=names)]
-
-#Remove clutter
-rm(indx, i, names)
-
-#Calculate the average euclidean distance per replicate
-v.35ind.sparse.bioerror.euclid.mean <- v.35ind.sparse.bioerror.euclid %>%
-  group_by(Individual) %>%
-  dplyr::select(-Replicate) %>%
-  summarise_all(.funs = mean)
-
-#Compare 3dMD and Vectra
-#Stack the two dataframes of sd statistics on top of each other
-b.35ind.sparse.bioerror.euclid.mean <- rbind(md.35ind.sparse.bioerror.euclid.mean, v.35ind.sparse.bioerror.euclid.mean)
-
-#Reorder the factor levels by number
-b.35ind.sparse.bioerror.euclid.mean$Individual <- factor(b.35ind.sparse.bioerror.euclid.mean$Individual, levels = c(paste0("P", 1:35)))
-
-#Add a column telling which camera each came from
-b.35ind.sparse.bioerror.euclid.mean$Camera <- c(rep("3dMD", times = nrow(md.35ind.sparse.bioerror.euclid.mean)), rep("Vectra", times = nrow(v.35ind.sparse.bioerror.euclid.mean)))
-
-#Plot with outliers
-p<-ggplot(melt(b.35ind.sparse.bioerror.euclid.mean, id.vars = c("Individual", "Camera")), aes(x = Individual, y=value, fill=Camera))+geom_boxplot(outlier.size = 0.25)+theme_bw()+theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5))+ylab("Euclidean distance (mm)")+scale_fill_manual(values = c("#0D646B", "#C75E24"))
-ggsave(filename = "FiguresAndTables/b.35ind.sparse.bioerror.euclid.pdf", plot = p, device = "pdf", width = 6, height = 4, units = "in")
-
-#Plot per camera instead of per person
-tmp <- b.35ind.sparse.bioerror.euclid.mean %>% 
-  group_by(Individual, Camera) %>%
-  ungroup() %>%
-  mutate(Avg = rowMeans(.[,-c(which(colnames(b.35ind.sparse.bioerror.euclid.mean) %in% c("Individual", "Camera")))])) %>%
-  dplyr::select(Individual, Camera, Avg)
-
-p <- ggplot(melt(tmp, id.vars = c("Individual", "Camera")), aes(x = Camera, y=value, fill = Camera))+geom_point(colour = "black", size = 0.9)+geom_line(aes(group = Individual), colour = "black", alpha = 0.25)+geom_boxplot(outlier.shape = NA, alpha = 0.75, coef = 0)+scale_fill_manual(values = c("#0D646B", "#C75E24"))+ylab("Euclidean distance (mm)")+xlab("Camera")+theme_bw()+theme(legend.position = "none", axis.title = element_text())
-ggsave(filename = "FiguresAndTables/b.35ind.sparse.bioerror.euclid.per.camera.pdf", plot = p, device = "pdf", width = 6, height = 4, units = "in")
-
-#Remove clutter
-rm(p, tmp)
 
 ##### Camera error #####
 #Align the two images per person
@@ -374,9 +273,6 @@ b.35ind.sparse.rrpp <- rrpp.data.frame(coords = two.d.array(b.35ind.sparse.gpa$r
 
 #RCBD model with subsampling
 b.35ind.sparse.rrpp.III <- lm.rrpp(coords ~ Camera*Individual, data = b.35ind.sparse.rrpp, print.progress = FALSE, iter = 99, SS.type = "III")
-
-#Treating Individual as random effect
-anova(b.35ind.sparse.rrpp.III, error = c("Camera:Individual", "Camera:Individual", "Residuals"))
 
 #Write anova results to file
 capture.output(anova(b.35ind.sparse.rrpp.III, error = c("Camera:Individual", "Camera:Individual", "Residuals")), file = "FiguresAndTables/b.35ind.sparse.camerror.anova.txt")
