@@ -1,17 +1,52 @@
 #Ignore conference material
 /AAPA2019/*
 
-#Ignore unused analyses and archived code 
+#Ignore unused analyses, archived code, and raw materials
+Analysis/.Rproj.user/*
 Analysis/ArchivedCode/*
 Analysis/CameraError_NormalDispCurvArea/*
 Analysis/EDMA/*
 
-#Ignore raw materials, which can't be shared online per the IRB.
-Analysis/RawImageData/*
-Analysis/.Rproj.user/*
-Analysis/.RData
-Analysis/.Rhistory
+Analysis/RawImageData/3DMD/Mannequin_Mapping_1/*
+Analysis/RawImageData/3DMD/Mannequin_Mapping_2/*
+Analysis/RawImageData/3DMD/Mannequin_Mapping_3/*
+Analysis/RawImageData/3DMD/Mapping_1/*
+Analysis/RawImageData/3DMD/Mapping_2/*
+Analysis/RawImageData/3DMD/Mapping_3/*
+Analysis/RawImageData/3DMD/WithPowder/*
+Analysis/RawImageData/3DMD/XYZ_35ind_3DMD_7160LM.txt
+Analysis/RawImageData/3DMD/XYZ_Mqn_3DMD_7160LM.txt
+Analysis/RawImageData/3DMD/XYZ_Mqn_3DMD_7160LM_2.txt
+
+Analysis/RawImageData/3DMD_UpsampledMesh/*
+
+Analysis/RawImageData/Vectra/Mannequin_Mapping_1/*
+Analysis/RawImageData/Vectra/Mannequin_Mapping_2/*
+Analysis/RawImageData/Vectra/Mannequin_Mapping_3/*
+Analysis/RawImageData/Vectra/Mapping_1/*
+Analysis/RawImageData/Vectra/Mapping_2/*
+Analysis/RawImageData/Vectra/Mapping_3/*
+Analysis/RawImageData/Vectra/WithPowder/*
+Analysis/RawImageData/Vectra/XYZ_35ind_Vectra_7160LM.txt
+Analysis/RawImageData/Vectra/XYZ_Mqn_Vectra_7160LM.txt
+Analysis/RawImageData/Vectra/XYZ_Mqn_Vectra_7160LM_2.txt
+
+Analysis/All.35ind.7160LM.mat
+Analysis/All.Mqn.7160LM.mat
+Analysis/CombinedMappedCoordinates.asv
+Analysis/Meta_MIRC.xlsx
+Analysis/XYZ_35ind_3DMD_7160LM.txt
+Analysis/XYZ_35ind_3DMD_Up_7160LM.txt
+Analysis/XYZ_35ind_Vectra_7160LM.txt
+Analysis/XYZ_Mqn_3DMD_7160LM.txt
+Analysis/XYZ_Mqn_3DMD_7160LM_2.txt
+Analysis/XYZ_Mqn_Vectra_7160LM.txt
+Analysis/XYZ_Mqn_Vectra_7160LM_2.txt
+
+Analysis/VectraVs3dMD.RData
+Analysis/VectraVs3dMD.Rhistory
 Analysis/VectraVs3dMD.nb.html
+Analysis/VectraVs3dMD.Rmd
 
 #Ignore Tom's script, which can be found on his own GitHub account
 Analysis/Plot1Face.R
