@@ -2,55 +2,34 @@
 /AAPA2019/*
 
 #Ignore unused analyses, archived code, and raw materials
-Analysis/.Rproj.user/*
-Analysis/ArchivedCode/*
-Analysis/CameraError_NormalDispCurvArea/*
-Analysis/EDMA/*
+/Analysis/.Rproj.user/*
+/Analysis/ArchivedCode/*
+/Analysis/CameraError_NormalDispCurvArea/*
+/Analysis/EDMA/*
 
-Analysis/RawImageData/3DMD/Mannequin_Mapping_1/*
-Analysis/RawImageData/3DMD/Mannequin_Mapping_2/*
-Analysis/RawImageData/3DMD/Mannequin_Mapping_3/*
-Analysis/RawImageData/3DMD/Mapping_1/*
-Analysis/RawImageData/3DMD/Mapping_2/*
-Analysis/RawImageData/3DMD/Mapping_3/*
-Analysis/RawImageData/3DMD/WithPowder/*
-Analysis/RawImageData/3DMD/XYZ_35ind_3DMD_7160LM.txt
-Analysis/RawImageData/3DMD/XYZ_Mqn_3DMD_7160LM.txt
-Analysis/RawImageData/3DMD/XYZ_Mqn_3DMD_7160LM_2.txt
+/Analysis/RawImageData/3DMD/35ind/*
+/Analysis/RawImageData/3DMD/Mannequin_NoPowder/*
+/Analysis/RawImageData/3DMD/Mannequin_WithPowder/*
 
-Analysis/RawImageData/3DMD_UpsampledMesh/*
+/Analysis/RawImageData/3DMD_UpsampledMesh/*
 
-Analysis/RawImageData/Vectra/Mannequin_Mapping_1/*
-Analysis/RawImageData/Vectra/Mannequin_Mapping_2/*
-Analysis/RawImageData/Vectra/Mannequin_Mapping_3/*
-Analysis/RawImageData/Vectra/Mapping_1/*
-Analysis/RawImageData/Vectra/Mapping_2/*
-Analysis/RawImageData/Vectra/Mapping_3/*
-Analysis/RawImageData/Vectra/WithPowder/*
-Analysis/RawImageData/Vectra/XYZ_35ind_Vectra_7160LM.txt
-Analysis/RawImageData/Vectra/XYZ_Mqn_Vectra_7160LM.txt
-Analysis/RawImageData/Vectra/XYZ_Mqn_Vectra_7160LM_2.txt
+/Analysis/RawImageData/Vectra/35ind/*
+/Analysis/RawImageData/Vectra/Mannequin_NoPowder/*
+/Analysis/RawImageData/Vectra/Mannequin_WithPowder/*
 
-Analysis/All.35ind.7160LM.mat
-Analysis/All.Mqn.7160LM.mat
-Analysis/CombinedMappedCoordinates.asv
-Analysis/Meta_MIRC.xlsx
-Analysis/XYZ_35ind_3DMD_7160LM.txt
-Analysis/XYZ_35ind_3DMD_Up_7160LM.txt
-Analysis/XYZ_35ind_Vectra_7160LM.txt
-Analysis/XYZ_Mqn_3DMD_7160LM.txt
-Analysis/XYZ_Mqn_3DMD_7160LM_2.txt
-Analysis/XYZ_Mqn_Vectra_7160LM.txt
-Analysis/XYZ_Mqn_Vectra_7160LM_2.txt
+/Analysis/RawImageData/All.35ind.7160LM.mat
+/Analysis/RawImageData/All.Mqn.7160LM.mat
+/Analysis/RawImageData/CombineMappedCoordinates.asv
+/Analysis/RawImageData/Meta_MIRC.xlsx
 
-Analysis/VectraVs3dMD.RData
-Analysis/VectraVs3dMD.Rhistory
-Analysis/VectraVs3dMD.nb.html
-Analysis/VectraVs3dMD.Rmd
+/Analysis/VectraVs3dMD.RData
+/Analysis/VectraVs3dMD.Rhistory
+/Analysis/VectraVs3dMD.nb.html
+/Analysis/VectraVs3dMD.Rmd
 
 #Ignore Tom's script, which can be found on his own GitHub account
-Analysis/Plot1Face.R
-Analysis/Plot1Face_Tutorial.Rmd
+/Analysis/Plot1Face.R
+/Analysis/Plot1Face_Tutorial.Rmd
 
 #Ignore manuscript material until acceptance
 /Manuscript/*
